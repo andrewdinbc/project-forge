@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (format === 'pdf') {
-        return new NextResponse(pdfBuffer, {
+        return new NextResponse(new Uint8Array(pdfBuffer), {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="${bundleName.replace(/\s+/g, '-')}-bundle.pdf"`,
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
           pdfBuffer,
         });
 
-        return new NextResponse(zipBuffer, {
+        return new NextResponse(new Uint8Array(zipBuffer), {
           headers: {
             'Content-Type': 'application/zip',
             'Content-Disposition': `attachment; filename="${bundleName.replace(/\s+/g, '-')}-bundle.zip"`,
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         pdfBuffer,
       });
 
-      return new NextResponse(zipBuffer, {
+      return new NextResponse(new Uint8Array(zipBuffer), {
         headers: {
           'Content-Type': 'application/zip',
           'Content-Disposition': `attachment; filename="${bundleName.replace(/\s+/g, '-')}-bundle.zip"`,
@@ -314,4 +314,5 @@ async function generateZip({
   const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
   return zipBuffer;
 }
+
 
