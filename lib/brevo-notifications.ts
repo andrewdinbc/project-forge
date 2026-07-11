@@ -1,5 +1,3 @@
-import { Resend } from 'resend';
-
 interface BundleReadyNotification {
   teacherEmail: string;
   teacherName: string;
