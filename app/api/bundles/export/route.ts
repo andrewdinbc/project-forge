@@ -93,7 +93,7 @@ async function generatePDF({
   totalPrice: number;
 }): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([612, 792]); // Letter size
+  let page = pdfDoc.addPage([612, 792]); // Letter size
   const { width, height } = page.getSize();
 
   const fontSize = 12;
@@ -314,3 +314,4 @@ async function generateZip({
   const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
   return zipBuffer;
 }
+
