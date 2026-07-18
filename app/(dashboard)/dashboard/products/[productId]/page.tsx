@@ -48,12 +48,12 @@ export default function ProductDetailPage() {
       const user = await getCurrentUser();
       if (!user) { router.push('/auth/login'); return; }
       const path = `${user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const { error: uploadError } = await supabase.storage.from('product-files').upload(path, file, {
+      const { error: uploadError } = await (supabase as any).storage.from('product-files').upload(path, file, {
         contentType: 'application/pdf',
         upsert: false,
       });
       if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
-      const { data: urlData } = supabase.storage.from('product-files').getPublicUrl(path);
+      const { data: urlData } = (supabase as any).storage.from('product-files').getPublicUrl(path);
       const updated = await updateProduct(productId, user.id, { file_url: urlData.publicUrl });
       setProduct(updated);
     } catch (e) {
