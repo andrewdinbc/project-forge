@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Product } from '@/types/product';
+import { getCurrentUser } from '@/lib/auth';
+import { createBundle, updateBundle, getBundle, addProductToBundle } from '@/lib/bundles';
 import BundleProductCard from './BundleProductCard';
 import BundlePreview from './BundlePreview';
 import BundleExportDialog from './BundleExportDialog';
@@ -13,13 +16,17 @@ interface BundledProduct extends Product {
   quantity: number;
 }
 
-export default function BundleBuilder() {
+// bundleId prop: when present, loads and edits an existing bundle instead of creating a new one.
+export default function BundleBuilder({ bundleId }: { bundleId?: string }) {
+  const router = useRouter();
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
   const [bundledProducts, setBundledProducts] = useState<BundledProduct[]>([]);
   const [bundleName, setBundleName] = useState('My Bundle');
   const [bundleDescription, setBundleDescription] = useState('');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -31,22 +38,38 @@ export default function BundleBuilder() {
   );
 
   React.useEffect(() => {
-    fetchAvailableProducts();
-  }, []);
+    (async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/products');
+        if (!response.ok) throw new Error('Failed to fetch products');
+        const products: Product[] = await response.json();
+        setAvailableProducts(products);
 
-  const fetchAvailableProducts = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/products');
-      if (!response.ok) throw new Error('Failed to fetch products');
-      const data = await response.json();
-      setAvailableProducts(data);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+        if (bundleId) {
+          const user = await getCurrentUser();
+          if (!user) { router.push('/auth/login'); return; }
+          const bundle = await getBundle(bundleId, user.id);
+          if (!bundle) { setSaveError('Bundle not found.'); return; }
+          setBundleName(bundle.title || 'My Bundle');
+          setBundleDescription(bundle.description || '');
+          const existingItems = (bundle.bundle_items || [])
+            .map((item: any) => {
+              const product = item.products || products.find((p) => p.id === item.product_id);
+              if (!product) return null;
+              return { ...product, bundleId: `${product.id}-${item.id}`, quantity: 1 };
+            })
+            .filter(Boolean);
+          setBundledProducts(existingItems);
+        }
+      } catch (error) {
+        console.error('Error loading bundle builder:', error);
+        setSaveError((error as Error).message);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [bundleId]);
 
   const handleAddProduct = useCallback((product: Product) => {
     const bundledProduct: BundledProduct = {
@@ -57,13 +80,13 @@ export default function BundleBuilder() {
     setBundledProducts((prev) => [...prev, bundledProduct]);
   }, []);
 
-  const handleRemoveProduct = useCallback((bundleId: string) => {
-    setBundledProducts((prev) => prev.filter((p) => p.bundleId !== bundleId));
+  const handleRemoveProduct = useCallback((bId: string) => {
+    setBundledProducts((prev) => prev.filter((p) => p.bundleId !== bId));
   }, []);
 
-  const handleUpdateQuantity = useCallback((bundleId: string, quantity: number) => {
+  const handleUpdateQuantity = useCallback((bId: string, quantity: number) => {
     setBundledProducts((prev) =>
-      prev.map((p) => (p.bundleId === bundleId ? { ...p, quantity: Math.max(1, quantity) } : p))
+      prev.map((p) => (p.bundleId === bId ? { ...p, quantity: Math.max(1, quantity) } : p))
     );
   }, []);
 
@@ -82,13 +105,66 @@ export default function BundleBuilder() {
 
   const totalPrice = bundledProducts.reduce((sum, p) => sum + p.price * p.quantity, 0);
 
+  const handleSaveBundle = useCallback(async (status: 'draft' | 'active') => {
+    if (!bundleName.trim()) { setSaveError('Bundle name is required.'); return; }
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const user = await getCurrentUser();
+      if (!user) { router.push('/auth/login'); return; }
+
+      const bundleData = {
+        title: bundleName.trim(),
+        description: bundleDescription.trim() || null,
+        bundle_type: 'custom',
+        original_price_usd: totalPrice,
+        bundle_price_usd: totalPrice,
+        status,
+      };
+
+      let bundle;
+      if (bundleId) {
+        bundle = await updateBundle(bundleId, user.id, bundleData);
+      } else {
+        bundle = await createBundle(user.id, bundleData);
+        // Only need to (re)create bundle_items on create; edit-mode item diffing
+        // is a known follow-up (see note in bundles/[bundleId]/page.js).
+        for (const product of bundledProducts) {
+          await addProductToBundle(bundle.id, product.id, user.id);
+        }
+      }
+
+      router.push(`/dashboard/bundles/${bundle.id}`);
+    } catch (error) {
+      console.error('Error saving bundle:', error);
+      setSaveError((error as Error).message);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [bundleName, bundleDescription, bundledProducts, totalPrice, bundleId, router]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">Bundle Builder</h1>
-          <p className="text-slate-600">Create custom product bundles with drag-and-drop ordering</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-slate-900 mb-2">
+              {bundleId ? 'Edit Bundle' : 'Bundle Builder'}
+            </h1>
+            <p className="text-slate-600">Create custom product bundles with drag-and-drop ordering</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/bundles')}
+            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium bg-white hover:bg-slate-50"
+          >
+            ← Back to Bundles
+          </button>
         </div>
+
+        {saveError && (
+          <div className="mb-6 bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{saveError}</div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Available Products */}
@@ -131,6 +207,9 @@ export default function BundleBuilder() {
               onBundleNameChange={setBundleName}
               onBundleDescriptionChange={setBundleDescription}
               onShowExportDialog={() => setShowExportDialog(true)}
+              onSaveDraft={() => handleSaveBundle('draft')}
+              onSavePublish={() => handleSaveBundle('active')}
+              isSaving={isSaving}
             />
           </div>
         </div>
