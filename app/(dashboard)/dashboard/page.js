@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserProducts } from '@/lib/products';
+import { getUserProducts, createProduct } from '@/lib/products';
 import { getUserBundles } from '@/lib/bundles';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
 export default function DashboardPage() {
@@ -11,6 +12,8 @@ export default function DashboardPage() {
   const [products, setProducts] = useState([]);
   const [bundles, setBundles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -37,6 +40,43 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
+  async function handleBulkUpload(fileList) {
+    const files = Array.from(fileList || []).filter((f) => f.type === 'application/pdf');
+    if (!files.length) return;
+    setUploading(true);
+    setUploadResult(null);
+    const created = [];
+    const errors = [];
+    try {
+      const currentUser = user || (await getCurrentUser());
+      if (!currentUser) return;
+
+      for (const file of files) {
+        try {
+          const path = `${currentUser.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+          const { error: uploadError } = await (supabase).storage.from('product-files').upload(path, file, {
+            contentType: 'application/pdf',
+            upsert: false,
+          });
+          if (uploadError) throw new Error(uploadError.message);
+          const { data: urlData } = (supabase).storage.from('product-files').getPublicUrl(path);
+          const product = await createProduct(currentUser.id, {
+            title: file.name.replace(/\.pdf$/i, ''),
+            file_url: urlData.publicUrl,
+            status: 'draft',
+          });
+          created.push(product);
+        } catch (e) {
+          errors.push({ filename: file.name, error: e.message });
+        }
+      }
+      setProducts((prev) => [...created, ...prev]);
+      setUploadResult({ count: created.length, errors });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -54,6 +94,37 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-4xl font-bold text-slate-900">Dashboard</h1>
         <p className="text-slate-600 mt-2">Welcome back! Manage your products and bundles.</p>
+      </div>
+
+      {/* Bulk upload existing products */}
+      <div className="card p-6 border-2 border-dashed border-slate-300">
+        <h2 className="text-xl font-bold text-slate-900 mb-1">📎 Upload Your Existing Products</h2>
+        <p className="text-slate-600 text-sm mb-4">
+          Drop in PDFs of products you already have -- each one becomes a Product automatically (title taken from the filename), ready to tag into components and slice/mix in the Composer.
+        </p>
+        <label className="btn-primary inline-block cursor-pointer">
+          {uploading ? 'Uploading…' : '📎 Choose PDF(s)'}
+          <input
+            type="file" accept="application/pdf" multiple
+            disabled={uploading}
+            onChange={(e) => handleBulkUpload(e.target.files)}
+            className="hidden"
+          />
+        </label>
+        {uploadResult && (
+          <div className="mt-3 text-sm">
+            {uploadResult.count > 0 && (
+              <p className="text-green-700">✓ Added {uploadResult.count} product{uploadResult.count > 1 ? 's' : ''}.</p>
+            )}
+            {uploadResult.errors?.length > 0 && (
+              <div className="text-red-600 mt-1">
+                {uploadResult.errors.map((e, i) => (
+                  <div key={i}>{e.filename}: {e.error}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats */}
