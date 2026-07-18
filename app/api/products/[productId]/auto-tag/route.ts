@@ -37,13 +37,13 @@ export async function POST(request: NextRequest, { params }: { params: { product
     // Extract text per page (not just the whole-document blob) so the
     // model can reason about which SPECIFIC pages a category belongs to.
     const pages: string[] = [];
-    function renderPage(pageData: any) {
+    const renderPage = (pageData: any) => {
       return pageData.getTextContent().then((textContent: any) => {
         const text = textContent.items.map((item: any) => item.str).join(' ');
         pages.push(text);
         return text;
       });
-    }
+    };
     await pdfParse(buffer, { pagerender: renderPage });
 
     if (pages.length === 0) {
