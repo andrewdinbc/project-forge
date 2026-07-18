@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import pdfParse from 'pdf-parse';
 import { getProduct } from '@/lib/products';
+import { extractPdfPagesText } from '@/lib/pdf-page-extract';
 import { deleteAllComponentsForProduct, addComponents } from '@/lib/product-components';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
 
@@ -10,6 +10,10 @@ import { CATEGORY_GROUPS } from '@/lib/component-categories';
 // Teacher Instructions, etc.), replacing the need to manually tag every
 // page one at a time. Per Aj, 2026-07-18: "I want the AI to identify these
 // components and 'tag' them."
+//
+// Uses the existing lib/pdf-page-extract.js (found already in this repo --
+// this route originally duplicated that logic inline before noticing the
+// existing helper; refactored to use it instead).
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Categories that genuinely map to a distinct page or page range in a
@@ -34,17 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: { product
     if (!pdfRes.ok) return NextResponse.json({ error: `Could not download the PDF (${pdfRes.status})` }, { status: 422 });
     const buffer = Buffer.from(await pdfRes.arrayBuffer());
 
-    // Extract text per page (not just the whole-document blob) so the
-    // model can reason about which SPECIFIC pages a category belongs to.
-    const pages: string[] = [];
-    const renderPage = (pageData: any) => {
-      return pageData.getTextContent().then((textContent: any) => {
-        const text = textContent.items.map((item: any) => item.str).join(' ');
-        pages.push(text);
-        return text;
-      });
-    };
-    await pdfParse(buffer, { pagerender: renderPage });
+    const { pages } = await extractPdfPagesText(buffer);
 
     if (pages.length === 0) {
       return NextResponse.json({ error: 'Could not read any pages from this PDF' }, { status: 422 });
