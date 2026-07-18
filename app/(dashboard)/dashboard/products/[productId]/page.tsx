@@ -15,6 +15,9 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [autoTagging, setAutoTagging] = useState(false);
+  const [autoTagResult, setAutoTagResult] = useState<{ taggedCount: number; pageCount: number } | null>(null);
+  const [tagVersion, setTagVersion] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -60,6 +63,28 @@ export default function ProductDetailPage() {
       setError(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleAutoTag() {
+    setAutoTagging(true);
+    setError(null);
+    setAutoTagResult(null);
+    try {
+      const user = await getCurrentUser();
+      if (!user) { router.push('/auth/login'); return; }
+      const res = await fetch(`/api/products/${productId}/auto-tag`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setAutoTagResult({ taggedCount: data.taggedCount, pageCount: data.pageCount });
+      setTagVersion((v) => v + 1); // force ComponentTagger to reload its list
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Auto-tag failed');
+    } finally {
+      setAutoTagging(false);
     }
   }
 
@@ -110,13 +135,26 @@ export default function ProductDetailPage() {
             {uploading && <p className="text-xs text-slate-500 mt-1">Uploading…</p>}
           </div>
         ) : (
-          <p className="text-sm text-green-700 mt-2">
-            ✓ File on record — <a href={product.file_url} target="_blank" rel="noreferrer" className="underline">view PDF</a>
-          </p>
+          <div className="mt-2">
+            <p className="text-sm text-green-700">
+              ✓ File on record — <a href={product.file_url} target="_blank" rel="noreferrer" className="underline">view PDF</a>
+            </p>
+            <button onClick={handleAutoTag} disabled={autoTagging} className="btn-primary mt-2">
+              {autoTagging ? '🔍 Reading pages…' : '✨ AI Auto-Tag Components'}
+            </button>
+            <p className="text-xs text-slate-500 mt-1">
+              Reads every page and tags Cover Page, Answer Keys, Teacher Instructions, etc. automatically -- re-running replaces the previous AI pass.
+            </p>
+            {autoTagResult && (
+              <p className="text-sm text-green-700 mt-2">
+                ✓ Tagged {autoTagResult.taggedCount} component{autoTagResult.taggedCount !== 1 ? 's' : ''} across {autoTagResult.pageCount} pages.
+              </p>
+            )}
+          </div>
         )}
       </div>
 
-      <ComponentTagger productId={productId} />
+      <ComponentTagger key={tagVersion} productId={productId} />
     </div>
   );
 }
