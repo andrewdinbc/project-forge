@@ -10,6 +10,9 @@ interface BundlePreviewProps {
   onBundleNameChange: (name: string) => void;
   onBundleDescriptionChange: (description: string) => void;
   onShowExportDialog: () => void;
+  onSaveDraft?: () => void;
+  onSavePublish?: () => void;
+  isSaving?: boolean;
 }
 
 export default function BundlePreview({
@@ -20,6 +23,9 @@ export default function BundlePreview({
   onBundleNameChange,
   onBundleDescriptionChange,
   onShowExportDialog,
+  onSaveDraft,
+  onSavePublish,
+  isSaving,
 }: BundlePreviewProps) {
   const itemCount = bundledProducts.reduce((sum, p) => sum + p.quantity, 0);
   const productCount = bundledProducts.length;
@@ -72,6 +78,32 @@ export default function BundlePreview({
 
         {/* Actions */}
         <div className="space-y-2">
+          {(onSaveDraft || onSavePublish) && (
+            <>
+              <button
+                onClick={onSavePublish}
+                disabled={bundledProducts.length === 0 || isSaving}
+                className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
+                  bundledProducts.length === 0 || isSaving
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {isSaving ? 'Saving…' : '✅ Save & Publish'}
+              </button>
+              <button
+                onClick={onSaveDraft}
+                disabled={isSaving}
+                className={`w-full py-2 px-4 rounded-lg font-medium border transition-colors ${
+                  isSaving
+                    ? 'border-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {isSaving ? 'Saving…' : '💾 Save as Draft'}
+              </button>
+            </>
+          )}
           <button
             onClick={onShowExportDialog}
             disabled={bundledProducts.length === 0}
