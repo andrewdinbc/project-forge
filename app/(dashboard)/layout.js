@@ -83,6 +83,12 @@ export default function DashboardLayout({ children }) {
           >
             🧬 Composer
           </Link>
+          <Link
+            href="/dashboard/style-lab"
+            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
+          >
+            🎨 Style Lab
+          </Link>
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 bg-white w-64">
