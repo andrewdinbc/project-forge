@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { SYSTEM_FONTS } from '@/lib/style-lab-fonts';
 
 // Pixlr-style visual layers for a Style Lab resource page (Aj, 2026-07-19).
 // The rendered page is on the right; Style Lab (Claude vision) identifies the
@@ -17,14 +18,6 @@ const LEVELS = [
   { key: 'midground', label: 'Midground', hint: 'Supporting decoration' },
   { key: 'background', label: 'Background', hint: 'Borders, framing, backdrop' },
 ];
-
-// Common built-in system fonts don't need a "find similar / buy" prompt --
-// nobody needs to license Tahoma. Aj, 2026-07-19.
-const SYSTEM_FONTS = new Set([
-  'Tahoma', 'Arial', 'Helvetica', 'Times New Roman', 'TimesNewRomanPSMT', 'Courier', 'CourierNewPSMT',
-  'Courier New', 'Calibri', 'Verdana', 'Georgia', 'Wingdings', 'Wingdings-Regular', 'Symbol',
-  'Comic Sans MS', 'Trebuchet MS', 'Impact',
-]);
 
 export default function VisualComponents({ userId, resourceId }) {
   const [page, setPage] = useState(1);

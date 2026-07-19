@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { STYLE_DIALS, defaultDialValues, dialValuesToPromptText } from '@/lib/style-dials'
 import VisualComponents from '@/components/VisualComponents'
 import InstructErase from '@/components/InstructErase'
+import { SYSTEM_FONTS } from '@/lib/style-lab-fonts'
 
 // Style Lab (moved here from lesson-planner 2026-07-18, per Aj -- this app,
 // project-forge, is the real TPT bundle/publishing platform, so the
@@ -83,6 +84,51 @@ export default function StyleLabPage() {
       setPushingId(null)
     }
   }
+
+  function pushToFontModifier(r) {
+    const font = (r.visual_analysis?.fonts || []).find((f) => !SYSTEM_FONTS.has(f))
+    const params = new URLSearchParams({ tool: 'text', title: `${r.title || 'Resource'} lettering` })
+    if (font) params.set('fontFamily', font)
+    router.push(`/dashboard/asset-modifier?${params.toString()}`)
+  }
+
+  // Bulk analyze (Aj, 2026-07-19): "I want beside each thing to have the
+  // ability to push to either of these modifiers... AI will do the legwork
+  // in determining what is necessary... automate the process so I can begin
+  // creating my own legally usable parts library." Select a batch of
+  // imported resources, run one auto-analyze pass (page 1 of each), and
+  // both Push buttons go from "click and wait" to "already ready" on every
+  // card at once -- no opening Visual layers one at a time first.
+  const [bulkSelected, setBulkSelected] = useState(new Set())
+  const [bulkAnalyzing, setBulkAnalyzing] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState(null)
+  const toggleBulk = (id) => setBulkSelected((prev) => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const toggleBulkAll = () => setBulkSelected((prev) =>
+    prev.size === resources.length ? new Set() : new Set(resources.map((r) => r.id))
+  )
+  async function bulkAnalyze() {
+    if (bulkSelected.size === 0) return
+    setBulkAnalyzing(true); setBulkMsg(null)
+    try {
+      const res = await fetch('/api/style-lab/bulk-analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, resourceIds: Array.from(bulkSelected) }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || 'Bulk analyze failed')
+      const byId = new Map(d.results.filter((r) => r.status === 'ok').map((r) => [r.resourceId, r.analysis]))
+      setResources((prev) => prev.map((r) => (byId.has(r.id) ? { ...r, visual_analysis: byId.get(r.id) } : r)))
+      setBulkMsg(`Analyzed ${d.analyzed} of ${d.requested}${d.errored ? ` (${d.errored} failed)` : ''} -- Push buttons below are ready.`)
+      if (d.requested > 25) setBulkMsg((m) => `${m} Only the first 25 were processed per run -- select the rest and run again.`)
+    } catch (e) {
+      setBulkMsg(e.message)
+    } finally {
+      setBulkAnalyzing(false)
+    }
+  }
+
 
 
   useEffect(() => {
@@ -667,12 +713,33 @@ export default function StyleLabPage() {
         </div>
       )}
 
+      {resources.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '8px 12px', background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 8, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12, color: '#1c3557', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+            <input type="checkbox" checked={bulkSelected.size === resources.length && resources.length > 0} onChange={toggleBulkAll} />
+            Select all ({resources.length})
+          </label>
+          <span style={{ fontSize: 12, color: '#555' }}>{bulkSelected.size} selected</span>
+          <button onClick={bulkAnalyze} disabled={bulkAnalyzing || bulkSelected.size === 0}
+            style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#2f6b41', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: bulkAnalyzing || bulkSelected.size === 0 ? 'default' : 'pointer', opacity: bulkAnalyzing || bulkSelected.size === 0 ? 0.6 : 1 }}>
+            {bulkAnalyzing ? 'Analyzing…' : '🤖 Auto-Analyze Selected'}
+          </button>
+          <span style={{ fontSize: 10, color: '#888' }}>Detects components & fonts (page 1 of each) so both Push buttons are ready below, no need to open Visual layers first.</span>
+          {bulkMsg && <span style={{ fontSize: 11, color: bulkMsg.startsWith('Analyzed') ? '#2f6b41' : '#a33' }}>{bulkMsg}</span>}
+        </div>
+      )}
+
       {resources.map((r) => {
         const statusInfo = STATUS_LABELS[r.status] || STATUS_LABELS.raw
         return (
           <div key={r.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <input
+                  type="checkbox" checked={bulkSelected.has(r.id)} onChange={() => toggleBulk(r.id)}
+                  title="Select for bulk actions (Auto-Analyze)"
+                  style={{ marginTop: 4 }}
+                />
                 <input
                   type="checkbox" checked={selectedForBlend.has(r.id)} onChange={() => toggleBlendSelection(r.id)}
                   disabled={!r.layer_notes}
@@ -866,6 +933,14 @@ export default function StyleLabPage() {
               >
                 {pushingId === r.id ? 'Opening…' : '🎨 Push to Asset Modifier'}
               </button>
+              {(r.visual_analysis?.fonts || []).some((f) => !SYSTEM_FONTS.has(f)) && (
+                <button
+                  onClick={() => pushToFontModifier(r)}
+                  style={{ padding: '5px 12px', background: '#1c3557', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  🔤 Push to Font Modifier
+                </button>
+              )}
               {['marked_for_tpt', 'tpt_package_ready'].includes(r.status) && (
                 <button
                   onClick={() => generateTptPackage(r)} disabled={busyId === r.id}
