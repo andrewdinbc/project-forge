@@ -27,6 +27,8 @@ export default function VisualComponents({ userId, resourceId }) {
   const [hoverId, setHoverId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(null);
+  const [savingFonts, setSavingFonts] = useState(false);
+  const [savedFontsMsg, setSavedFontsMsg] = useState(null);
   const [inpainting, setInpainting] = useState(false);
   const [inpaintMsg, setInpaintMsg] = useState(null);
   const [inpaintedUrl, setInpaintedUrl] = useState(null);
@@ -141,6 +143,31 @@ export default function VisualComponents({ userId, resourceId }) {
     save({ title: 'Color palette', category: 'palette', dataUrl: c.toDataURL('image/png') }, 'the palette');
   };
 
+  // Saves the font NAME(s) declared in the PDF, not the font itself -- a font
+  // is separately-licensed software, and its actual program (glyph outlines)
+  // isn't ours to extract and reuse. This gives you the real name so you can
+  // go get your own license for it, the same way the palette gives you real
+  // hex codes instead of a picture of some colors. Aj, 2026-07-19.
+  async function saveFonts() {
+    setSavingFonts(true); setSavedFontsMsg(null);
+    try {
+      const res = await fetch('/api/library-parts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId, kind: 'component',
+          sourceId: `stylelab-fonts:${resourceId}:${page}`,
+          title: `Fonts used (page ${page})`,
+          category: 'font_reference',
+          notes: analysis.fonts.join(', '),
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Save failed');
+      setSavedFontsMsg(d.alreadySaved ? 'Already in Parts Library' : 'Saved to Parts Library ✓');
+    } catch (e) { setSavedFontsMsg(e.message); }
+    finally { setSavingFonts(false); }
+  }
+
   // AI generative fill (Replicate, LaMa inpainting model): reconstructs what's
   // actually behind the removed component(s) instead of the flat edge-color
   // guess above -- for banners/borders sitting on a pattern or gradient where
@@ -222,6 +249,26 @@ export default function VisualComponents({ userId, resourceId }) {
               style={{ marginTop: 4, fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 8px', cursor: saving ? 'default' : 'pointer' }}>
               ⭐ Save palette
             </button>
+          </div>
+        )}
+
+        {analysis && analysis.fonts?.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#1c3557', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>Fonts used</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {analysis.fonts.map((f, i) => (
+                <span key={i} style={{ fontSize: 10, color: '#333', background: '#f0ece3', borderRadius: 4, padding: '2px 6px' }}>{f}</span>
+              ))}
+            </div>
+            <button onClick={saveFonts} disabled={savingFonts}
+              style={{ marginTop: 4, fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 8px', cursor: savingFonts ? 'default' : 'pointer' }}>
+              {savingFonts ? 'Saving…' : '⭐ Save font names'}
+            </button>
+            {savedFontsMsg && <span style={{ fontSize: 10, color: savedFontsMsg.startsWith('Saved') || savedFontsMsg.startsWith('Already') ? '#2f6b41' : '#a33', marginLeft: 6 }}>{savedFontsMsg}</span>}
+            <p style={{ fontSize: 9, color: '#aaa', marginTop: 3, lineHeight: 1.4 }}>
+              These are the actual font names this PDF declares -- saved as a reference so you can license
+              the same font yourself, not as a reusable asset (fonts are separately-licensed software).
+            </p>
           </div>
         )}
 

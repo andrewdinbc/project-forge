@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
-import { getPageCount, renderPageWithLayers } from '@/lib/pdf-layer-render';
+import { getPageCount, renderPageWithLayers, getPageFonts } from '@/lib/pdf-layer-render';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 
 const admin: any = supabaseAdmin;
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
     const canvas = createCanvas(img.width, img.height);
     canvas.getContext('2d').drawImage(img, 0, 0);
     const palette = extractPalette(canvas);
+    const fonts = await getPageFonts(pdfBytes, page);
 
     // Vision: identify reusable visual components with normalized boxes.
     const prompt = `You are analyzing a single teaching-resource page image (a worksheet/printable). Identify the DISTINCT visual components a teacher might want to isolate, reuse, or remove — e.g. a decorative border frame, a central illustration, a cluster of flowers, leaf sprays, number labels, a title banner, small motifs (a bee, a star).
@@ -138,6 +139,7 @@ Respond with ONLY valid JSON, no prose, no markdown:
       height: img.height,
       components,
       palette,
+      fonts,
       analyzedAt: new Date().toISOString(),
     };
 
