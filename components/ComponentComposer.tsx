@@ -36,6 +36,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   const [title, setTitle] = useState('Hybrid Product');
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<{ included: string[]; skipped: string[] } | null>(null);
+  const [generatedFileUrl, setGeneratedFileUrl] = useState<string | null>(null); // for QR code after a successful generate
   const [autoTagging, setAutoTagging] = useState(false);
   const [autoTagProgress, setAutoTagProgress] = useState<string | null>(null);
   const [autoTagErrors, setAutoTagErrors] = useState<string[]>([]);
@@ -300,6 +301,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
 
     setGenerating(true);
     setResult(null);
+    setGeneratedFileUrl(null);
     try {
       const res = await fetch('/api/composer/generate', {
         method: 'POST',
@@ -314,6 +316,14 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       const skippedRaw = res.headers.get('X-Skipped-Categories');
       const skipped = skippedRaw ? decodeURIComponent(skippedRaw).split(' | ').filter(Boolean) : [];
       setResult({ included: includedHeader, skipped });
+
+      // Completed hybrids are now saved as a real, standalone product with
+      // a public file URL (see /api/composer/generate) -- this is what
+      // makes a QR code possible. Best-effort: if the save failed
+      // server-side, this header is just empty and no QR shows, but the
+      // download below still succeeds either way.
+      const rawFileUrl = res.headers.get('X-Generated-File-Url');
+      if (rawFileUrl) setGeneratedFileUrl(decodeURIComponent(rawFileUrl));
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -560,6 +570,26 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
                     <li key={i}>{s}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {generatedFileUrl && (
+              <div className="mt-4 pt-4 border-t border-slate-200 flex items-center gap-4">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(generatedFileUrl)}`}
+                  alt="QR code for this hybrid product"
+                  width={100}
+                  height={100}
+                  className="border border-slate-200 rounded"
+                />
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">📱 Scan to open this product</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Also saved as a standalone product -- it's now on your Dashboard.
+                  </p>
+                  <a href={generatedFileUrl} target="_blank" rel="noreferrer" className="text-[11px] text-blue-600 underline">
+                    Open file directly ↗
+                  </a>
+                </div>
               </div>
             )}
           </div>

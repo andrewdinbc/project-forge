@@ -66,20 +66,36 @@ export default function LibraryPartsPage() {
                   background: '#fff', border: '1px solid #e3ddd0', borderRadius: 8, padding: '10px 14px',
                 }}
               >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#1c3557', margin: 0 }}>{p.title}</p>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 2 }}>
-                    {p.category && <span style={{ fontSize: 11, color: '#999' }}>{p.category}</span>}
-                    {p.products?.title && (
-                      <a href={`/dashboard/products/${p.source_product_id}`} style={{ fontSize: 11, color: '#2f6b41' }}>
-                        from "{p.products.title}"
-                      </a>
-                    )}
-                    {p.kind === 'resource' && (
-                      <a href="/dashboard/style-lab" style={{ fontSize: 11, color: '#2f6b41' }}>
-                        View in Style Lab
-                      </a>
-                    )}
+                <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {p.file_url && (
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(p.file_url)}`}
+                      alt="QR code"
+                      width={44}
+                      height={44}
+                      style={{ border: '1px solid #e3ddd0', borderRadius: 4, flexShrink: 0 }}
+                    />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#1c3557', margin: 0 }}>{p.title}</p>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+                      {p.category && <span style={{ fontSize: 11, color: '#999' }}>{p.category}</span>}
+                      {p.products?.title && (
+                        <a href={`/dashboard/products/${p.source_product_id}`} style={{ fontSize: 11, color: '#2f6b41' }}>
+                          from "{p.products.title}"
+                        </a>
+                      )}
+                      {p.kind === 'resource' && (
+                        <a href="/dashboard/style-lab" style={{ fontSize: 11, color: '#2f6b41' }}>
+                          View in Style Lab
+                        </a>
+                      )}
+                      {p.file_url && (
+                        <a href={p.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#2f6b41' }}>
+                          Open file ↗
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getComponentsForProducts, createHybridProduct } from '@/lib/product-components';
 import { ASSEMBLY_ORDER } from '@/lib/component-categories';
+import { createProduct } from '@/lib/products';
+import { supabaseAdmin } from '@/lib/supabase';
 
 interface GeneratedContentItem {
   category: string;
@@ -186,12 +188,44 @@ export async function POST(request: NextRequest) {
 
     const hybridBytes = await hybridDoc.save();
 
+    // Upload the finished PDF and create a real product row -- completes
+    // wiring that was already half-built: hybrid_products.generated_product_id
+    // existed but was never populated, so every generated hybrid was a
+    // one-off download with no stored file and no way to reference it
+    // later (no QR code, no re-use, didn't show up on the Dashboard).
+    // Best-effort: if this fails, the download still succeeds -- it just
+    // won't be QR-able or show up as a standalone product.
+    let generatedProductId: string | null = null;
+    let generatedFileUrl: string | null = null;
+    try {
+      const safeTitle = title.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${userId}/${Date.now()}-${safeTitle}.pdf`;
+      const { error: uploadError } = await (supabaseAdmin as any).storage
+        .from('product-files')
+        .upload(path, Buffer.from(hybridBytes), { contentType: 'application/pdf', upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = (supabaseAdmin as any).storage.from('product-files').getPublicUrl(path);
+      generatedFileUrl = urlData.publicUrl;
+
+      const sourceTitles = Array.from(new Set(allComponents.map((c: any) => c.products?.title).filter(Boolean)));
+      const newProduct = await createProduct(userId, {
+        title,
+        description: `Hybrid product assembled in Composer from: ${sourceTitles.join(', ') || 'multiple source products'}`,
+        file_url: generatedFileUrl,
+        status: 'draft',
+      }, supabaseAdmin);
+      generatedProductId = newProduct.id;
+    } catch (e) {
+      console.error('Failed to save generated hybrid as a standalone product:', e instanceof Error ? e.message : e);
+    }
+
     // Record composition history/provenance before returning the file, so
     // it's tracked even if the download itself never completes client-side.
     await createHybridProduct(userId, {
       title,
       source_product_ids: productIds,
       selections,
+      generated_product_id: generatedProductId,
     });
 
     return new NextResponse(new Uint8Array(hybridBytes), {
@@ -200,6 +234,8 @@ export async function POST(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${title.replace(/\s+/g, '-')}-hybrid.pdf"`,
         'X-Included-Categories': included.join(','),
         'X-Skipped-Categories': skipped.length ? encodeURIComponent(skipped.join(' | ')) : '',
+        'X-Generated-Product-Id': generatedProductId || '',
+        'X-Generated-File-Url': generatedFileUrl ? encodeURIComponent(generatedFileUrl) : '',
       },
     });
   } catch (error) {

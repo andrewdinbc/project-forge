@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, kind, sourceId, sourceProductId, title, category, notes } = body;
+    const { userId, kind, sourceId, sourceProductId, title, category, notes, fileUrl } = body;
     if (!userId || !kind || !sourceId || !title) {
       return NextResponse.json({ error: 'userId, kind, sourceId, and title are required' }, { status: 400 });
     }
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
         user_id: userId, kind, source_id: sourceId,
         source_product_id: sourceProductId || null,
         title, category: category || null, notes: notes || null,
+        file_url: fileUrl || null,
       })
       .select()
       .single();

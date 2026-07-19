@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { COLORS as C, FONT_BODY } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
-import { STYLE_DIALS, defaultDialValues } from '@/lib/style-dials'
+import { STYLE_DIALS, defaultDialValues, dialValuesToPromptText } from '@/lib/style-dials'
 
 // Style Lab (moved here from lesson-planner 2026-07-18, per Aj -- this app,
 // project-forge, is the real TPT bundle/publishing platform, so the
@@ -307,7 +307,7 @@ export default function StyleLabPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId, kind: 'resource', sourceId: r.id,
-          title: r.title, category: r.source_type,
+          title: r.title, category: r.source_type, fileUrl: r.file_url,
         }),
       })
       if (!res.ok) {
@@ -500,6 +500,26 @@ export default function StyleLabPage() {
                     </div>
                   )
                 })}
+
+                {/* Live view -- shows the EXACT text these dial settings turn
+                    into at generation time (lib/style-dials.js
+                    dialValuesToPromptText), updating instantly on every drag
+                    since it's a pure client-side computation, no AI call.
+                    Per Aj, 2026-07-19: "I want to see what that looks like
+                    live" -- for Style Lab specifically, since dials are
+                    directives (HOW something gets written), not literal
+                    pages, the meaningful "live view" is the actual
+                    instruction text this behavior produces, not a rendered
+                    document (that only exists once real content gets
+                    generated from it). */}
+                <div style={{ marginTop: 10, padding: 10, background: '#f7f5f0', border: '1px dashed #b8dcc2', borderRadius: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#2f6b41', marginBottom: 4 }}>
+                    👁 Live view -- what this actually tells the AI
+                  </div>
+                  <pre style={{ fontSize: 10, color: '#555', whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit' }}>
+                    {dialValuesToPromptText(p.dial_values || defaultDialValues()) || '(All dials near neutral -- no strong directives yet. Move a slider to see it appear here.)'}
+                  </pre>
+                </div>
               </div>
 
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e6e0d5' }}>
