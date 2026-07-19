@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { runLamaInpaint, buildMaskBuffer } from '@/lib/style-lab-inpaint';
 
 const admin: any = supabaseAdmin;
 
@@ -12,51 +12,18 @@ const admin: any = supabaseAdmin;
 // an obvious patch under that scheme. This route hands the real problem to
 // an actual inpainting model instead of approximating it.
 //
-// Model: zylim0702/remove-object (LaMa -- Large Mask Inpainting). Chosen over
-// a general instruction-following editor (FLUX Kontext, used elsewhere for
-// Generate Matching Set) because this is a mask-based fill task with no
-// content to describe -- LaMa takes image + mask and reconstructs the masked
-// region from surrounding structure, no prompt needed, ~3s, ~$0.0006/run.
+// Replicate call + mask building now live in lib/style-lab-inpaint.js,
+// shared with the AI Instruction Removal tool (instruct-erase) so the two
+// don't drift into two slightly-different implementations of the same thing.
 //
 // POST { userId, resourceId, page, hiddenBoxes }
 //   hiddenBoxes -- array of {x,y,w,h} in the same 0..1 fractional-of-image
 //                  coordinates VisualComponents already uses for boxes.
-// Builds a black/white mask from those boxes, sends the cached analyzed page
-// image + mask to Replicate, uploads the result, and saves it straight to
-// Parts Library (category 'style_lab_smart_erase') -- mirrors the
-// generate-matching-set pattern of doing the save server-side in one call.
 export const maxDuration = 120;
-
-const REPLICATE_MODEL = 'zylim0702/remove-object';
-
-async function runReplicate(imageUrl: string, maskUrl: string) {
-  const token = process.env.REPLICATE_API_TOKEN;
-  const res = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_MODEL}/predictions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait=55' },
-    body: JSON.stringify({ input: { image: imageUrl, mask: maskUrl } }),
-  });
-  let prediction: any = await res.json();
-  if (!res.ok) throw new Error(prediction?.detail || prediction?.error || `Replicate request failed (${res.status})`);
-
-  const deadline = Date.now() + 90_000;
-  while (prediction.status !== 'succeeded' && prediction.status !== 'failed' && prediction.status !== 'canceled') {
-    if (Date.now() > deadline) throw new Error('Timed out waiting on Replicate');
-    await new Promise((r) => setTimeout(r, 2000));
-    const poll = await fetch(prediction.urls.get, { headers: { Authorization: `Bearer ${token}` } });
-    prediction = await poll.json();
-  }
-  if (prediction.status !== 'succeeded') throw new Error(prediction?.error || `Inpainting ${prediction.status}`);
-  const out = prediction.output;
-  const url = Array.isArray(out) ? out[0] : out;
-  if (!url) throw new Error('No image returned from Replicate');
-  return url as string;
-}
 
 export async function POST(request: NextRequest) {
   try {
-    const token = process.env.REPLICATE_API_TOKEN;
-    if (!token) {
+    if (!process.env.REPLICATE_API_TOKEN) {
       return NextResponse.json(
         { error: 'REPLICATE_API_TOKEN is not set on this Vercel project yet. Add one from replicate.com/account/api-tokens, then this will work with no other changes.' },
         { status: 400 }
@@ -82,23 +49,13 @@ export async function POST(request: NextRequest) {
 
     const W = analysis.width, H = analysis.height;
 
-    // Build the mask: white = fill this in, black = leave alone (LaMa convention).
-    const maskCanvas = createCanvas(W, H);
-    const mctx = maskCanvas.getContext('2d');
-    mctx.fillStyle = '#000000';
-    mctx.fillRect(0, 0, W, H);
-    mctx.fillStyle = '#ffffff';
-    for (const b of hiddenBoxes) {
-      mctx.fillRect(Math.round(b.x * W), Math.round(b.y * H), Math.round(b.w * W), Math.round(b.h * H));
-    }
-    const maskBuf = await maskCanvas.encode('png');
-
+    const maskBuf = await buildMaskBuffer(hiddenBoxes, W, H);
     const maskPath = `${userId}/style-lab-masks/${resourceId}/${Date.now()}.png`;
     const { error: maskUpErr } = await admin.storage.from('design-assets').upload(maskPath, maskBuf, { contentType: 'image/png', upsert: true });
     if (maskUpErr) throw new Error(`Mask upload failed: ${maskUpErr.message}`);
     const { data: maskUrlData } = admin.storage.from('design-assets').getPublicUrl(maskPath);
 
-    const resultUrl = await runReplicate(analysis.imageUrl, maskUrlData.publicUrl);
+    const resultUrl = await runLamaInpaint(analysis.imageUrl, maskUrlData.publicUrl);
 
     // Re-host the Replicate result in our own storage so it doesn't depend on
     // Replicate's (temporary) output URL staying alive.

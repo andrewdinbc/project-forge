@@ -5,6 +5,7 @@ import { COLORS as C, FONT_BODY } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
 import { STYLE_DIALS, defaultDialValues, dialValuesToPromptText } from '@/lib/style-dials'
 import VisualComponents from '@/components/VisualComponents'
+import InstructErase from '@/components/InstructErase'
 
 // Style Lab (moved here from lesson-planner 2026-07-18, per Aj -- this app,
 // project-forge, is the real TPT bundle/publishing platform, so the
@@ -802,7 +803,12 @@ export default function StyleLabPage() {
                   🖼 Visual layers {visualLayersFor === r.id ? '▲' : '▼'}
                   <span style={{ fontWeight: 400, color: '#888', fontSize: 11 }}> — identify components, hide what you don&apos;t want, save the pieces</span>
                 </button>
-                {visualLayersFor === r.id && <VisualComponents userId={userId} resourceId={r.id} />}
+                {visualLayersFor === r.id && (
+                  <>
+                    <InstructErase userId={userId} resourceId={r.id} />
+                    <VisualComponents userId={userId} resourceId={r.id} />
+                  </>
+                )}
               </div>
             )}
 
