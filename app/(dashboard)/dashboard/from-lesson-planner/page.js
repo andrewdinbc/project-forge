@@ -138,8 +138,8 @@ export default function FromLessonPlannerPage() {
         Every PDF or URL an end user has uploaded in lesson-planner's Resources step lands here automatically.
         Preview a PDF before deciding what to do with it, then push any of them straight into AI Steering --
         content is automatically cleaned by AI first (cover pages, tables of contents, teacher information pages,
-        terms of use, and credits are stripped out), and it's then live shaping future AI generation across the
-        Chalk &amp; Circuit ecosystem.
+        terms of use, credits, and branding/copyright pages are stripped out), and it's then live shaping future
+        AI generation across the Chalk &amp; Circuit ecosystem.
       </p>
       {error && (
         <div style={{ background: '#fdecea', border: '1px solid #f3c2bb', borderRadius: 6, padding: 10, marginBottom: 16, fontSize: 12, color: '#a33' }}>

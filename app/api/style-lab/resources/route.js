@@ -8,7 +8,8 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Strips non-instructional boilerplate before content is pushed into AI
 // Steering, per Aj 2026-07-19: cover pages, tables of contents, teacher
-// information/instruction pages, terms of use, and credits pages are noise
+// information/instruction pages, terms of use, credits, and branding/
+// copyright pages are noise
 // as generation context and can actively pollute it. Keeps everything else
 // verbatim -- this is a removal pass, not a rewrite, so real instructional
 // content, activities, and text are preserved exactly as extracted.
@@ -21,6 +22,7 @@ async function cleanForSteering(text, title) {
 - Teacher information / "how to use this resource" instruction pages
 - Terms of use / copyright license / usage rights text
 - Credits pages (font credits, clipart credits, "made by" attributions)
+- Branding or copyright pages (seller logo/brand pages, "© [name/store]" copyright notices, watermark-style copyright text, TPT store branding)
 
 Keep EVERYTHING else exactly as written, including all actual instructional content, activities, passages, questions, answer keys, and any other real educational material. Do not summarize, rewrite, or paraphrase anything you keep -- only remove the categories listed above. If none of those categories are present, return the text completely unchanged.
 
@@ -200,7 +202,7 @@ export async function POST(request) {
     // 2026-07-19: added an AI cleanup pass right before the push, per Aj --
     // extracted PDF text carries whatever boilerplate the source document
     // had (cover page, table of contents, teacher instructions, terms of
-    // use, credits), none of which is useful as generation context and can
+    // use, credits, branding/copyright), none of which is useful as generation context and can
     // actively pollute it. This runs unconditionally on whatever text is
     // about to be pushed (including teacher-edited text, since manual
     // edits don't necessarily already strip this out), and the cleaned
