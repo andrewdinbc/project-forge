@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getProduct } from '@/lib/products';
+import { supabaseAdmin } from '@/lib/supabase';
 import { extractPdfPagesText } from '@/lib/pdf-page-extract';
 import { deleteAllComponentsForProduct, addComponents } from '@/lib/product-components';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
@@ -30,7 +31,15 @@ export async function POST(request: NextRequest, { params }: { params: { product
     const { userId } = body;
     if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
 
-    const product = await getProduct(params.productId, userId);
+    // Server-side route -- no browser session/cookies reach Supabase here,
+    // so the anon client's auth.uid() is always null and RLS silently
+    // blocks the row (this was the root cause of "Product not found" for
+    // real, existing products -- fixed 2026-07-19). supabaseAdmin bypasses
+    // RLS; getProduct still explicitly filters by userId so this isn't a
+    // new access-control gap, just the same authorization check that was
+    // already there, minus the RLS layer that was never actually enforcing
+    // anything extra server-side to begin with.
+    const product = await getProduct(params.productId, userId, supabaseAdmin);
     if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     if (!product.file_url) return NextResponse.json({ error: 'This product has no file uploaded yet' }, { status: 400 });
 
