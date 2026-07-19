@@ -90,6 +90,12 @@ export default function DashboardLayout({ children }) {
             🎨 Style Lab
           </Link>
           <Link
+            href="/dashboard/schema-lab"
+            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
+          >
+            🧬 Schema Lab
+          </Link>
+          <Link
             href="/dashboard/from-lesson-planner"
             className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
           >
