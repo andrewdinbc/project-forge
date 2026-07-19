@@ -14,6 +14,11 @@ export default function LibraryPartsPage() {
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [genFor, setGenFor] = useState(null); // part id whose "generate matching set" form is open
+  const [genPrompt, setGenPrompt] = useState('');
+  const [genCount, setGenCount] = useState(6);
+  const [generating, setGenerating] = useState(false);
+  const [genMsg, setGenMsg] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,6 +45,31 @@ export default function LibraryPartsPage() {
       setParts((prev) => prev.filter((p) => p.id !== id));
     } finally {
       setBusyId(null);
+    }
+  }
+
+  // Uses a saved component/palette/view as a style reference and generates
+  // NEW on-style assets via Replicate (e.g. "15 shapes for color-by-number
+  // in this exact style"). Needs REPLICATE_API_TOKEN set on the project --
+  // surfaces that clearly if it isn't. Aj, 2026-07-19.
+  async function generateSet(part) {
+    setGenerating(true);
+    setGenMsg(null);
+    try {
+      const res = await fetch('/api/style-lab/generate-matching-set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, partId: part.id, prompt: genPrompt, count: genCount }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Generation failed');
+      if (d.saved?.length) setParts((prev) => [...d.saved, ...prev]);
+      const note = d.failures?.length ? ` (${d.failures.length} failed — click again to retry those)` : '';
+      setGenMsg(`Added ${d.savedCount} of ${d.requested}${note}`);
+    } catch (e) {
+      setGenMsg(e.message);
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -143,13 +173,50 @@ export default function LibraryPartsPage() {
                   <p style={{ fontSize: 10, color: '#555', margin: 0, lineHeight: 1.3 }} title={p.title}>
                     {p.title.replace(/^.*-- /, '')}
                   </p>
-                  <button
-                    onClick={() => remove(p.id)}
-                    disabled={busyId === p.id}
-                    style={{ fontSize: 9, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0, marginTop: 2 }}
-                  >
-                    {busyId === p.id ? '…' : 'Remove'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => remove(p.id)}
+                      disabled={busyId === p.id}
+                      style={{ fontSize: 9, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                    >
+                      {busyId === p.id ? '…' : 'Remove'}
+                    </button>
+                    <button
+                      onClick={() => { setGenFor(genFor === p.id ? null : p.id); setGenMsg(null); setGenPrompt(''); }}
+                      style={{ fontSize: 9, color: '#7a3c8a', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                    >
+                      ✨ Generate matching set
+                    </button>
+                  </div>
+                  {genFor === p.id && (
+                    <div style={{ marginTop: 6, padding: 6, background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 6 }}>
+                      <input
+                        type="text"
+                        value={genPrompt}
+                        onChange={(e) => setGenPrompt(e.target.value)}
+                        placeholder='e.g. "a simple leaf outline for color-by-number, thick black lines"'
+                        style={{ width: '100%', fontSize: 10, padding: '4px 6px', border: '1px solid #d9b8e8', borderRadius: 4, boxSizing: 'border-box' }}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <label style={{ fontSize: 9, color: '#555' }}>
+                          Count:{' '}
+                          <input
+                            type="number" min={1} max={12} value={genCount}
+                            onChange={(e) => setGenCount(Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 6)))}
+                            style={{ width: 36, fontSize: 10, padding: '2px 4px', border: '1px solid #d9b8e8', borderRadius: 4 }}
+                          />
+                        </label>
+                        <button
+                          onClick={() => generateSet(p)}
+                          disabled={generating || !genPrompt.trim()}
+                          style={{ fontSize: 10, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: generating || !genPrompt.trim() ? 'default' : 'pointer', opacity: generating || !genPrompt.trim() ? 0.6 : 1 }}
+                        >
+                          {generating ? 'Generating…' : 'Generate'}
+                        </button>
+                      </div>
+                      {genMsg && <p style={{ fontSize: 9, color: genMsg.startsWith('Added') ? '#2f6b41' : '#a33', margin: '4px 0 0' }}>{genMsg}</p>}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
