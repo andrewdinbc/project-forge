@@ -347,10 +347,28 @@ export default function StyleLabPage() {
 
   return (
     <div style={{ fontFamily: FONT_BODY, maxWidth: 900, margin: '0 auto', padding: '24px 20px' }}>
-      <h1 style={{ color: C.navy, fontSize: 22, marginBottom: 4 }}>Project Forge</h1>
-      <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
+      <h1 style={{ color: C.navy, fontSize: 22, marginBottom: 4 }}>🎨 Style Lab</h1>
+      <p style={{ fontSize: 13, color: '#666', marginBottom: 12 }}>
         Everything you've uploaded or linked while building resources lands here. Edit it down to the parts you actually want, then either make it a standing AI preference or flag it for a future TPT listing.
       </p>
+      <div style={{ background: '#eef4fb', border: '1px solid #c8dcf0', borderRadius: 8, padding: 12, marginBottom: 20 }}>
+        <p style={{ fontSize: 12, color: '#333', margin: 0, lineHeight: 1.5 }}>
+          <strong>What this actually does, and how it's different from Composer:</strong> Style Lab
+          works with its own separate set of items -- PDFs you upload or import here (including past
+          TPT purchases), plus content this page generates -- not the products on your main
+          Dashboard. For each item, "Extract Style Layers" reads it and pulls out abstract
+          *format* patterns only (layout, pacing, how students interact, formatting conventions) --
+          it deliberately never touches or reproduces the actual content/text. You can like/dislike
+          or edit individual observations, then select a few items and "Blend" them into a named
+          style profile (like combining musical influences into a genre). That blend can be
+          fine-tuned with dials, pushed into AI Steering so future generations lean on it
+          automatically, or used directly to generate wholly original content in that style for a
+          subject/grade you pick. Nothing from your Dashboard products shows up here automatically --
+          if you want a product's style available in Style Lab, upload or import it here separately.
+          (For mixing actual content pages from existing products into a new hybrid PDF, that's
+          Composer, not this page.)
+        </p>
+      </div>
 
       {resources.length === 0 && (
         <p style={{ fontSize: 13, color: '#888' }}>Nothing here yet -- upload a PDF or add a URL from the Resources page.</p>

@@ -76,6 +76,24 @@ export default function ComposerPage() {
           Pick 2 or more products, then mix and match their structural components (cover pages,
           answer keys, instructions, etc.) into a new hybrid product.
         </p>
+        <div className="card p-4 mt-4 bg-blue-50 border-blue-200">
+          <p className="text-sm text-slate-700">
+            <span className="font-semibold">What this actually does:</span> Composer works with the
+            real PDFs already on your Dashboard. First, each source product needs its pages tagged
+            by section (cover page, answer keys, teacher instructions, extension activities, etc.) —
+            either manually on the product's own page, or automatically with the "Auto-Tag All with
+            AI" button once you've selected products below. Once tagged, every source product's
+            sections show up here as individual toggles, grouped by category. Flip on whichever
+            pages you want — you can mix pages from several different products, and even include
+            multiple items from the same category (e.g. two different answer-key sections). You can
+            also describe what you want in plain language (e.g. "use the interactive notebook pages
+            from Force and Motion") and the AI will set the toggles for you. When you hit Generate,
+            Composer copies the actual selected pages out of the real source PDFs and stitches them
+            into one new downloadable hybrid PDF, in a sensible front-matter → instruction →
+            classroom-materials order. Nothing here is AI-written — it's a literal page-level
+            cut-and-paste of your existing content.
+          </p>
+        </div>
       </div>
 
       {products.length < 2 ? (
