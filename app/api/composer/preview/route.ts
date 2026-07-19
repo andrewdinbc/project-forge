@@ -20,6 +20,7 @@ interface PreviewRequestBody {
   productIds: string[];
   selections: Record<string, string[]>;
   generatedContent?: GeneratedContentItem[];
+  libraryParts?: { category: string; fileUrl: string; title: string }[];
 }
 
 const PAGE_WIDTH = 612;
@@ -70,16 +71,41 @@ async function renderGeneratedContentPages(pdfDoc: PDFDocument, item: GeneratedC
   }
 }
 
+// Mirrors renderImagePage in /api/composer/generate -- same reasoning,
+// kept as a parallel copy rather than a shared import since preview and
+// generate were already two independent copies of the assembly logic
+// before this (wrapLine, renderGeneratedContentPages) and this follows
+// that existing pattern rather than introducing a partial refactor.
+async function renderImagePage(pdfDoc: PDFDocument, imageUrl: string, label: string) {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`Could not fetch image (${res.status})`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let image;
+  try {
+    image = await pdfDoc.embedPng(bytes);
+  } catch {
+    image = await pdfDoc.embedJpg(bytes);
+  }
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const maxW = PAGE_WIDTH - MARGIN * 2;
+  const maxH = PAGE_HEIGHT - MARGIN * 2 - 24;
+  const scale = Math.min(maxW / image.width, maxH / image.height, 1);
+  const w = image.width * scale, h = image.height * scale;
+  page.drawImage(image, { x: (PAGE_WIDTH - w) / 2, y: (PAGE_HEIGHT - h) / 2 - 12, width: w, height: h });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  page.drawText(label, { x: MARGIN, y: MARGIN / 2, size: 9, font, color: rgb(0.55, 0.55, 0.55) });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: PreviewRequestBody = await request.json();
-    const { productIds, selections, generatedContent } = body;
+    const { productIds, selections, generatedContent, libraryParts } = body;
 
     if (!productIds?.length || !selections) {
       return NextResponse.json({ error: 'productIds and selections are required' }, { status: 400 });
     }
 
-    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || (generatedContent?.length || 0) > 0;
+    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || (generatedContent?.length || 0) > 0 || (libraryParts?.length || 0) > 0;
     if (!hasAnySelection) {
       return NextResponse.json({ error: 'Nothing selected yet' }, { status: 422 });
     }
@@ -93,6 +119,14 @@ export async function POST(request: NextRequest) {
       const list = generatedByCategory.get(g.category) || [];
       list.push(g);
       generatedByCategory.set(g.category, list);
+    }
+
+    const libraryByCategory = new Map<string, { category: string; fileUrl: string; title: string }[]>();
+    for (const p of libraryParts || []) {
+      if (!p.category || !p.fileUrl) continue;
+      const list = libraryByCategory.get(p.category) || [];
+      list.push(p);
+      libraryByCategory.set(p.category, list);
     }
 
     let anyPageAdded = false;
@@ -127,6 +161,15 @@ export async function POST(request: NextRequest) {
       for (const g of generatedByCategory.get(categoryKey) || []) {
         try {
           await renderGeneratedContentPages(previewDoc, g);
+          anyPageAdded = true;
+        } catch {
+          // best-effort, same as above
+        }
+      }
+
+      for (const p of libraryByCategory.get(categoryKey) || []) {
+        try {
+          await renderImagePage(previewDoc, p.fileUrl, `${categoryKey} (Parts Library: ${p.title})`);
           anyPageAdded = true;
         } catch {
           // best-effort, same as above

@@ -29,6 +29,13 @@ interface GenerateRequestBody {
   // the teacher in the composer UI. Not a real source page -- rendered
   // fresh onto new PDF page(s) here rather than copied from a file.
   generatedContent?: GeneratedContentItem[];
+  // 2026-07-19: items pulled in from Parts Library (a component crop, a
+  // saved palette, a font-reference note that got skipped since it has no
+  // image, a Generate Matching Set result, a Smart-Erased page, an Asset/
+  // Font Modifier export, ...) -- each assigned a target category by the
+  // teacher in the Composer UI so it lands in the right spot in the
+  // assembled document, rendered as its own image page.
+  libraryParts?: { category: string; fileUrl: string; title: string }[];
 }
 
 const PAGE_WIDTH = 612; // US Letter
@@ -87,10 +94,36 @@ async function renderGeneratedContentPages(pdfDoc: PDFDocument, item: GeneratedC
   }
 }
 
+// Renders a Parts Library image (component, palette, generated set, smart-
+// erase result, etc.) as its own centered page -- the third source type
+// alongside copied product pages and AI-written text, added per Aj,
+// 2026-07-19: "use my parts library with it." Most Parts Library images are
+// PNG (everything built this session saves that way), but "Extract Images"
+// can pull real embedded JPEGs too, hence the fallback.
+async function renderImagePage(pdfDoc: PDFDocument, imageUrl: string, label: string) {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`Could not fetch image (${res.status})`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let image;
+  try {
+    image = await pdfDoc.embedPng(bytes);
+  } catch {
+    image = await pdfDoc.embedJpg(bytes);
+  }
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const maxW = PAGE_WIDTH - MARGIN * 2;
+  const maxH = PAGE_HEIGHT - MARGIN * 2 - 24;
+  const scale = Math.min(maxW / image.width, maxH / image.height, 1);
+  const w = image.width * scale, h = image.height * scale;
+  page.drawImage(image, { x: (PAGE_WIDTH - w) / 2, y: (PAGE_HEIGHT - h) / 2 - 12, width: w, height: h });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  page.drawText(label, { x: MARGIN, y: MARGIN / 2, size: 9, font, color: rgb(0.55, 0.55, 0.55) });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequestBody = await request.json();
-    const { userId, title, productIds, selections, generatedContent } = body;
+    const { userId, title, productIds, selections, generatedContent, libraryParts } = body;
 
     if (!userId || !title || !productIds?.length || !selections) {
       return NextResponse.json(
@@ -111,6 +144,14 @@ export async function POST(request: NextRequest) {
       const list = generatedByCategory.get(g.category) || [];
       list.push(g);
       generatedByCategory.set(g.category, list);
+    }
+
+    const libraryByCategory = new Map<string, { category: string; fileUrl: string; title: string }[]>();
+    for (const p of libraryParts || []) {
+      if (!p.category || !p.fileUrl) continue;
+      const list = libraryByCategory.get(p.category) || [];
+      list.push(p);
+      libraryByCategory.set(p.category, list);
     }
 
     // Assemble in a fixed, sensible order (front matter, then
@@ -175,6 +216,17 @@ export async function POST(request: NextRequest) {
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           skipped.push(`${categoryKey} (AI-generated: ${g.label}): ${msg}`);
+        }
+      }
+
+      const libraryForCategory = libraryByCategory.get(categoryKey) || [];
+      for (const p of libraryForCategory) {
+        try {
+          await renderImagePage(hybridDoc, p.fileUrl, `${categoryKey} (Parts Library: ${p.title})`);
+          included.push(`${categoryKey} (Parts Library: ${p.title})`);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          skipped.push(`${categoryKey} (Parts Library: ${p.title}): ${msg}`);
         }
       }
     }

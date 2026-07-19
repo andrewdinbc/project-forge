@@ -73,6 +73,32 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   const [savedToLibrary, setSavedToLibrary] = useState<Record<string, boolean>>({});
   const [savingToLibrary, setSavingToLibrary] = useState<Record<string, boolean>>({});
 
+  // Parts Library as a SOURCE (Aj, 2026-07-19): "I want to take one or
+  // multiple choice products and use my parts library with it." A third
+  // input alongside tagged product pages and AI-generated content --
+  // saved components, palettes, generated-set art, Smart-Erased pages,
+  // Asset/Font Modifier exports, etc. Each gets assigned a target category
+  // so it lands in the right spot in the assembled document.
+  const [libraryItems, setLibraryItems] = useState<{ id: string; title: string; file_url: string; category: string | null }[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryCategoryPick, setLibraryCategoryPick] = useState<Record<string, string>>({});
+  const [includedLibrary, setIncludedLibrary] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    (async () => {
+      setLibraryLoading(true);
+      try {
+        const res = await fetch(`/api/library-parts?userId=${userId}`);
+        const data = await res.json();
+        setLibraryItems((data.parts || []).filter((p: any) => p.kind === 'image' && p.file_url));
+      } catch (e) {
+        console.error('Failed to load Parts Library:', e);
+      } finally {
+        setLibraryLoading(false);
+      }
+    })();
+  }, [userId]);
+
   async function loadComponents() {
     setLoading(true);
     try {
@@ -129,6 +155,10 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
 
   function generatedFor(categoryKey: string) {
     return generatedItems.filter((g) => g.category === categoryKey);
+  }
+
+  function libraryItemsFor(categoryKey: string) {
+    return libraryItems.filter((p) => includedLibrary[p.id] && libraryCategoryPick[p.id] === categoryKey);
   }
 
   function toggle(componentId: string) {
@@ -213,12 +243,15 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
     const generatedContent = generatedItems
       .filter((g) => includedGenerated[g.tempId])
       .map((g) => ({ category: g.category, label: g.label, content: g.content }));
-    return { selections, generatedContent };
+    const libraryParts = libraryItems
+      .filter((p) => includedLibrary[p.id] && libraryCategoryPick[p.id])
+      .map((p) => ({ category: libraryCategoryPick[p.id], fileUrl: p.file_url, title: p.title }));
+    return { selections, generatedContent, libraryParts };
   }
 
   async function refreshPreview() {
-    const { selections, generatedContent } = buildSelectionsPayload();
-    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0;
+    const { selections, generatedContent, libraryParts } = buildSelectionsPayload();
+    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0 || libraryParts.length > 0;
     if (!hasAnySelection) {
       if (previewObjectUrlRef.current) {
         window.URL.revokeObjectURL(previewObjectUrlRef.current);
@@ -234,7 +267,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       const res = await fetch('/api/composer/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds, selections, generatedContent }),
+        body: JSON.stringify({ productIds, selections, generatedContent, libraryParts }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -261,7 +294,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(included), JSON.stringify(includedGenerated)]);
+  }, [JSON.stringify(included), JSON.stringify(includedGenerated), JSON.stringify(includedLibrary), JSON.stringify(libraryCategoryPick)]);
 
   useEffect(() => {
     return () => {
@@ -292,8 +325,8 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   }
 
   async function handleGenerate() {
-    const { selections, generatedContent } = buildSelectionsPayload();
-    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0;
+    const { selections, generatedContent, libraryParts } = buildSelectionsPayload();
+    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0 || libraryParts.length > 0;
     if (!hasAnySelection) {
       alert('Select at least one component to include.');
       return;
@@ -306,7 +339,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       const res = await fetch('/api/composer/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, title, productIds, selections, generatedContent }),
+        body: JSON.stringify({ userId, title, productIds, selections, generatedContent, libraryParts }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -422,6 +455,62 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
         )}
       </div>
 
+      <div className="card p-6">
+        <h3 className="text-sm font-semibold text-slate-800">📦 From Parts Library</h3>
+        <p className="text-xs text-slate-500 mt-0.5 mb-3">
+          Pull in saved components, palettes, generated sets, Smart-Erased pages, or Asset/Font
+          Modifier exports -- pick where each one belongs and it's rendered as its own page in
+          that spot in the assembled document.
+        </p>
+        {libraryLoading ? (
+          <p className="text-xs text-slate-400">Loading your Parts Library…</p>
+        ) : libraryItems.length === 0 ? (
+          <p className="text-xs text-slate-400 italic">
+            Nothing in your Parts Library yet -- save something from Style Lab, Composer, or the
+            Asset/Font Modifier first.
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {libraryItems.map((p) => {
+              const isOn = !!includedLibrary[p.id];
+              return (
+                <div key={p.id} className="flex items-center gap-3 border border-slate-200 rounded-lg px-3 py-2">
+                  <img src={p.file_url} alt={p.title} className="w-10 h-10 object-cover rounded border border-slate-100 shrink-0" />
+                  <p className="text-xs font-medium text-slate-800 truncate flex-1 min-w-0">{p.title}</p>
+                  <select
+                    value={libraryCategoryPick[p.id] || ''}
+                    onChange={(e) => setLibraryCategoryPick((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    className="text-xs border border-slate-300 rounded px-2 py-1 max-w-[160px]"
+                  >
+                    <option value="">Choose category…</option>
+                    {CATEGORY_GROUPS.map((group) => (
+                      <optgroup key={group.group} label={group.group}>
+                        {group.categories.map((cat) => (
+                          <option key={cat.key} value={cat.key}>{cat.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isOn}
+                    disabled={!libraryCategoryPick[p.id]}
+                    title={libraryCategoryPick[p.id] ? undefined : 'Pick a category first'}
+                    onClick={() => setIncludedLibrary((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-30 ${
+                      isOn ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${isOn ? 'translate-x-4' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {CATEGORY_GROUPS.map((group) => (
         <div key={group.group} className="card p-6">
           <h3 className="text-lg font-bold text-slate-900 mb-4">
@@ -431,11 +520,12 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
             {group.categories.map((cat) => {
               const items = componentsFor(cat.key);
               const genItems = generatedFor(cat.key);
+              const libItems = libraryItemsFor(cat.key);
 
               return (
                 <div key={cat.key}>
                   <span className="text-sm font-medium text-slate-800">{cat.label}</span>
-                  {items.length === 0 && genItems.length === 0 ? (
+                  {items.length === 0 && genItems.length === 0 && libItems.length === 0 ? (
                     <p className="text-xs text-slate-400 italic mt-1">
                       None of the selected products have this tagged.
                     </p>
@@ -539,6 +629,26 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
                           </div>
                         );
                       })}
+                      {libItems.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between gap-3 border border-emerald-200 bg-emerald-50 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <img src={p.file_url} alt={p.title} className="w-8 h-8 object-cover rounded border border-emerald-100 shrink-0" />
+                            <p className="text-xs font-medium text-slate-800 truncate flex items-center gap-2">
+                              {p.title}
+                              <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                                📦 Parts Library
+                              </span>
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIncludedLibrary((prev) => ({ ...prev, [p.id]: false }))}
+                            className="text-[10px] text-slate-500 underline shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

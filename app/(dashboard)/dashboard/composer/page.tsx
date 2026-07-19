@@ -73,35 +73,39 @@ export default function ComposerPage() {
       <div>
         <h1 className="text-3xl font-bold text-slate-900">🧬 Component Composer</h1>
         <p className="text-slate-600 mt-1">
-          Pick 2 or more products, then mix and match their structural components (cover pages,
-          answer keys, instructions, etc.) into a new hybrid product.
+          Pick one or more products, then mix and match their structural components (cover pages,
+          answer keys, instructions, etc.) -- plus anything from your Parts Library -- into a new
+          hybrid product.
         </p>
         <div className="card p-4 mt-4 bg-blue-50 border-blue-200">
           <p className="text-sm text-slate-700">
             <span className="font-semibold">What this actually does:</span> Composer works with the
-            real PDFs already on your Dashboard. First, each source product needs its pages tagged
+            real PDFs already on your Dashboard, plus items you've saved to your Parts Library.
+            First, each source product needs its pages tagged
             by section (cover page, answer keys, teacher instructions, extension activities, etc.) —
             either manually on the product's own page, or automatically with the "Auto-Tag All with
             AI" button once you've selected products below. Once tagged, every source product's
             sections show up here as individual toggles, grouped by category. Flip on whichever
-            pages you want — you can mix pages from several different products, and even include
-            multiple items from the same category (e.g. two different answer-key sections). You can
-            also describe what you want in plain language (e.g. "use the interactive notebook pages
-            from Force and Motion") and the AI will set the toggles for you. When you hit Generate,
-            Composer copies the actual selected pages out of the real source PDFs and stitches them
-            into one new downloadable hybrid PDF, in a sensible front-matter → instruction →
-            classroom-materials order. Nothing here is AI-written — it's a literal page-level
-            cut-and-paste of your existing content.
+            pages you want — you can mix pages from several different products (or just one), and
+            even include multiple items from the same category (e.g. two different answer-key
+            sections). Separately, anything in your Parts Library (saved components, palettes,
+            generated sets, Asset/Font Modifier exports) can be assigned to a category and pulled
+            in as its own page too. You can also describe what you want in plain language (e.g.
+            "use the interactive notebook pages from Force and Motion") and the AI will set the
+            toggles for you. When you hit Generate, Composer copies the actual selected pages out of
+            the real source PDFs, renders in your Parts Library picks, and stitches everything into
+            one new downloadable hybrid PDF, in a sensible front-matter → instruction →
+            classroom-materials order.
           </p>
         </div>
       </div>
 
-      {products.length < 2 ? (
+      {products.length < 1 ? (
         <div className="card p-12 text-center">
           <p className="text-4xl mb-4">🧬</p>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Need at least 2 products</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Need at least 1 product</h2>
           <p className="text-slate-600">
-            Upload a PDF file to two or more products and tag their components before composing.
+            Upload a PDF file to a product and tag its components before composing.
           </p>
         </div>
       ) : (
@@ -131,7 +135,7 @@ export default function ComposerPage() {
 
           <button
             onClick={() => setShowComposer(true)}
-            disabled={selectedIds.length < 2}
+            disabled={selectedIds.length < 1}
             className="btn-primary px-6 py-3 text-base disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Continue with {selectedIds.length} product{selectedIds.length === 1 ? '' : 's'} →
