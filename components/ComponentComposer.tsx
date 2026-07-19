@@ -18,6 +18,11 @@ interface GeneratedItem {
   category: string;
   label: string;
   content: string;
+  // 2026-07-19: content can come from a fetched URL too, not just the AI
+  // instruction box -- reuses this exact same include/toggle/category
+  // machinery rather than building a parallel set of state for it.
+  source?: 'ai' | 'url';
+  sourceUrl?: string;
 }
 
 interface Props {
@@ -83,6 +88,42 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryCategoryPick, setLibraryCategoryPick] = useState<Record<string, string>>({});
   const [includedLibrary, setIncludedLibrary] = useState<Record<string, boolean>>({});
+
+  // Composer "From URL" (Aj, 2026-07-19): "I also want to be able to call
+  // on URL websites for this as well." Fetches a webpage's text and adds
+  // it as a generatedItem with source:'url' -- reuses the exact same
+  // include/toggle/category/render pipeline already built for AI-generated
+  // content instead of a parallel implementation.
+  const [urlInput, setUrlInput] = useState('');
+  const [urlCategoryPick, setUrlCategoryPick] = useState('');
+  const [fetchingUrl, setFetchingUrl] = useState(false);
+  const [urlFetchError, setUrlFetchError] = useState<string | null>(null);
+  async function handleFetchUrl() {
+    if (!urlInput.trim() || !urlCategoryPick) return;
+    setFetchingUrl(true);
+    setUrlFetchError(null);
+    try {
+      const res = await fetch('/api/composer/fetch-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch that URL');
+      const tempId = `url-${Date.now()}`;
+      const item: GeneratedItem = {
+        tempId, category: urlCategoryPick, label: data.title || data.url,
+        content: data.text, source: 'url', sourceUrl: data.url,
+      };
+      setGeneratedItems((prev) => [...prev, item]);
+      setIncludedGenerated((prev) => ({ ...prev, [tempId]: true }));
+      setUrlInput('');
+    } catch (e) {
+      setUrlFetchError(e instanceof Error ? e.message : 'Failed to fetch that URL');
+    } finally {
+      setFetchingUrl(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -242,7 +283,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
     }
     const generatedContent = generatedItems
       .filter((g) => includedGenerated[g.tempId])
-      .map((g) => ({ category: g.category, label: g.label, content: g.content }));
+      .map((g) => ({ category: g.category, label: g.label, content: g.content, source: g.source, sourceUrl: g.sourceUrl }));
     const libraryParts = libraryItems
       .filter((p) => includedLibrary[p.id] && libraryCategoryPick[p.id])
       .map((p) => ({ category: libraryCategoryPick[p.id], fileUrl: p.file_url, title: p.title }));
@@ -511,6 +552,48 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
         )}
       </div>
 
+      <div className="card p-6">
+        <h3 className="text-sm font-semibold text-slate-800">🌐 From URL</h3>
+        <p className="text-xs text-slate-500 mt-0.5 mb-3">
+          Paste a webpage and it'll pull the readable text out, then render it as its own page in
+          whichever category you assign -- a real ideas/format source, same as tagged product
+          pages, not something written up by AI.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="https://example.com/some-teaching-idea"
+            disabled={fetchingUrl}
+            className="flex-1 min-w-[200px] border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <select
+            value={urlCategoryPick}
+            onChange={(e) => setUrlCategoryPick(e.target.value)}
+            disabled={fetchingUrl}
+            className="text-sm border border-slate-300 rounded-lg px-2 py-2 max-w-[200px]"
+          >
+            <option value="">Choose category…</option>
+            {CATEGORY_GROUPS.map((group) => (
+              <optgroup key={group.group} label={group.group}>
+                {group.categories.map((cat) => (
+                  <option key={cat.key} value={cat.key}>{cat.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <button
+            onClick={handleFetchUrl}
+            disabled={fetchingUrl || !urlInput.trim() || !urlCategoryPick}
+            className="btn-primary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+          >
+            {fetchingUrl ? 'Fetching…' : 'Fetch & Add'}
+          </button>
+        </div>
+        {urlFetchError && <p className="text-xs text-red-600 mt-2">{urlFetchError}</p>}
+      </div>
+
       {CATEGORY_GROUPS.map((group) => (
         <div key={group.group} className="card p-6">
           <h3 className="text-lg font-bold text-slate-900 mb-4">
@@ -585,22 +668,34 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
                       {genItems.map((item) => {
                         const isOn = !!includedGenerated[item.tempId];
                         const isExpanded = !!expandedGenerated[item.tempId];
+                        const isUrl = item.source === 'url';
                         return (
                           <div
                             key={item.tempId}
-                            className="border border-purple-200 bg-purple-50 rounded-lg px-3 py-2"
+                            className={`rounded-lg px-3 py-2 border ${isUrl ? 'border-blue-200 bg-blue-50' : 'border-purple-200 bg-purple-50'}`}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-xs font-medium text-slate-800 truncate flex items-center gap-2">
                                   {item.label}
-                                  <span className="text-[9px] font-semibold text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-2 py-0.5 whitespace-nowrap">
-                                    ✨ AI-generated
-                                  </span>
+                                  {isUrl ? (
+                                    <span className="text-[9px] font-semibold text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                                      🌐 From URL
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-semibold text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                                      ✨ AI-generated
+                                    </span>
+                                  )}
                                 </p>
+                                {isUrl && item.sourceUrl && (
+                                  <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-[10px] text-blue-700 underline block truncate max-w-xs">
+                                    {item.sourceUrl}
+                                  </a>
+                                )}
                                 <button
                                   onClick={() => setExpandedGenerated((prev) => ({ ...prev, [item.tempId]: !prev[item.tempId] }))}
-                                  className="text-[10px] text-purple-700 underline mt-0.5"
+                                  className={`text-[10px] underline mt-0.5 ${isUrl ? 'text-blue-700' : 'text-purple-700'}`}
                                 >
                                   {isExpanded ? 'Hide preview' : 'Preview content'}
                                 </button>

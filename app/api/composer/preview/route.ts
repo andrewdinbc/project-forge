@@ -14,6 +14,8 @@ interface GeneratedContentItem {
   category: string;
   label: string;
   content: string;
+  source?: 'ai' | 'url';
+  sourceUrl?: string;
 }
 
 interface PreviewRequestBody {
@@ -55,7 +57,8 @@ async function renderGeneratedContentPages(pdfDoc: PDFDocument, item: GeneratedC
   let y = PAGE_HEIGHT - MARGIN;
   page.drawText(item.label, { x: MARGIN, y, size: TITLE_SIZE, font: boldFont, color: rgb(0.11, 0.21, 0.34) });
   y -= TITLE_SIZE + 10;
-  page.drawText('AI-Generated', { x: MARGIN, y, size: 9, font, color: rgb(0.55, 0.55, 0.55) });
+  const sourceCaption = item.source === 'url' ? `From: ${item.sourceUrl || 'URL'}` : 'AI-Generated';
+  page.drawText(sourceCaption, { x: MARGIN, y, size: 9, font, color: rgb(0.55, 0.55, 0.55) });
   y -= 20;
   const paragraphs = item.content.split('\n');
   for (const paragraph of paragraphs) {

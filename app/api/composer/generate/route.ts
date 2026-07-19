@@ -9,6 +9,11 @@ interface GeneratedContentItem {
   category: string;
   label: string;
   content: string;
+  // 2026-07-19: content can now come from a fetched URL, not just the AI
+  // instruction box -- same rendering path, different page caption so it's
+  // not mislabeled "AI-Generated" when it's actually a real page's text.
+  source?: 'ai' | 'url';
+  sourceUrl?: string;
 }
 
 interface GenerateRequestBody {
@@ -77,7 +82,8 @@ async function renderGeneratedContentPages(pdfDoc: PDFDocument, item: GeneratedC
 
   page.drawText(item.label, { x: MARGIN, y, size: TITLE_SIZE, font: boldFont, color: rgb(0.11, 0.21, 0.34) });
   y -= TITLE_SIZE + 10;
-  page.drawText('AI-Generated', { x: MARGIN, y, size: 9, font, color: rgb(0.55, 0.55, 0.55) });
+  const sourceCaption = item.source === 'url' ? `From: ${item.sourceUrl || 'URL'}` : 'AI-Generated';
+  page.drawText(sourceCaption, { x: MARGIN, y, size: 9, font, color: rgb(0.55, 0.55, 0.55) });
   y -= 20;
 
   const paragraphs = item.content.split('\n');
@@ -210,12 +216,13 @@ export async function POST(request: NextRequest) {
 
       const generatedForCategory = generatedByCategory.get(categoryKey) || [];
       for (const g of generatedForCategory) {
+        const tag = g.source === 'url' ? `from URL` : 'AI-generated';
         try {
           await renderGeneratedContentPages(hybridDoc, g);
-          included.push(`${categoryKey} (AI-generated: ${g.label})`);
+          included.push(`${categoryKey} (${tag}: ${g.label})`);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          skipped.push(`${categoryKey} (AI-generated: ${g.label}): ${msg}`);
+          skipped.push(`${categoryKey} (${tag}: ${g.label}): ${msg}`);
         }
       }
 
