@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getPageCount, renderPageWithLayers } from '@/lib/pdf-layer-render';
 import { runLamaInpaint, buildMaskBuffer } from '@/lib/style-lab-inpaint';
 import { loadImage } from '@napi-rs/canvas';
+import { errorMessage } from '@/lib/error-message';
 
 const admin: any = supabaseAdmin;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, pageCount: targetPages.length, cleaned, notFound, errored, results: pageResults });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

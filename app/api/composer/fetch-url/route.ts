@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { errorMessage } from '@/lib/error-message';
 
 // Composer "From URL" (Aj, 2026-07-19): "I also want to be able to call on
 // URL websites for this as well." Reuses the exact same crude-but-proven
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
         .trim()
         .slice(0, 20000);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       return NextResponse.json({ error: `Couldn't fetch that URL: ${message}` }, { status: 422 });
     }
     if (!text) {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, url: parsed.href, title, text });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

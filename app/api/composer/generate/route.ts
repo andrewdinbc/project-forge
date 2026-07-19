@@ -4,6 +4,7 @@ import { getComponentsForProducts, createHybridProduct } from '@/lib/product-com
 import { ASSEMBLY_ORDER } from '@/lib/component-categories';
 import { createProduct } from '@/lib/products';
 import { supabaseAdmin } from '@/lib/supabase';
+import { errorMessage } from '@/lib/error-message';
 
 interface GeneratedContentItem {
   category: string;
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
             copiedPages.forEach((p) => hybridDoc.addPage(p));
             included.push(label);
           } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
+            const msg = errorMessage(e);
             skipped.push(`${label}: ${msg}`);
           }
         }
@@ -221,7 +222,7 @@ export async function POST(request: NextRequest) {
           await renderGeneratedContentPages(hybridDoc, g);
           included.push(`${categoryKey} (${tag}: ${g.label})`);
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = errorMessage(e);
           skipped.push(`${categoryKey} (${tag}: ${g.label}): ${msg}`);
         }
       }
@@ -232,7 +233,7 @@ export async function POST(request: NextRequest) {
           await renderImagePage(hybridDoc, p.fileUrl, `${categoryKey} (Parts Library: ${p.title})`);
           included.push(`${categoryKey} (Parts Library: ${p.title})`);
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = errorMessage(e);
           skipped.push(`${categoryKey} (Parts Library: ${p.title}): ${msg}`);
         }
       }
@@ -275,7 +276,7 @@ export async function POST(request: NextRequest) {
       }, supabaseAdmin);
       generatedProductId = newProduct.id;
     } catch (e) {
-      console.error('Failed to save generated hybrid as a standalone product:', e instanceof Error ? e.message : e);
+      console.error('Failed to save generated hybrid as a standalone product:', errorMessage(e));
     }
 
     // Record composition history/provenance before returning the file, so
@@ -298,7 +299,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

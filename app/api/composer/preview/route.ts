@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getComponentsForProducts } from '@/lib/product-components';
 import { ASSEMBLY_ORDER } from '@/lib/component-categories';
+import { errorMessage } from '@/lib/error-message';
 
 // Live preview companion to /api/composer/generate -- same page-assembly
 // logic, but returns the PDF inline (for embedding in an <iframe>) instead
@@ -193,7 +194,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

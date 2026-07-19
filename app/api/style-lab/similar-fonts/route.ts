@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { errorMessage } from '@/lib/error-message';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -68,7 +69,7 @@ Respond with ONLY this JSON, no other text before or after it:
       buyUrl: `https://www.google.com/search?q=${encodeURIComponent(`"${name}" font commercial license buy`)}`,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

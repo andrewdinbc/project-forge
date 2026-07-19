@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeResourcePage } from '@/lib/style-lab-vision';
+import { errorMessage } from '@/lib/error-message';
 
 // Bulk auto-analyze (Aj, 2026-07-19): "AI will do the legwork in determining
 // what is necessary... automate the process." Given a batch of Style Lab
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, requested: ids.length, analyzed: ok, errored, results: items });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

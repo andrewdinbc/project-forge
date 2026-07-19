@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSchemas, deleteSchema } from '@/lib/schema-lab';
+import { errorMessage } from '@/lib/error-message';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +10,7 @@ export async function GET(request: NextRequest) {
     const schemas = await listSchemas(userId);
     return NextResponse.json({ schemas });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -23,7 +24,7 @@ export async function DELETE(request: NextRequest) {
     await deleteSchema(userId, id);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

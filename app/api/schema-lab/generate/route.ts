@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getSchema, incrementGenerationCount } from '@/lib/schema-lab';
 import { getStyleProfile, createResource, buildSteeringContext } from '@/lib/style-lab';
 import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
+import { errorMessage } from '@/lib/error-message';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BC_ALIASES = ['bc', 'british columbia', 'british columbia, canada'];
@@ -112,7 +113,7 @@ Respond with ONLY valid JSON, no prose, no markdown:
       schemaName: schema.name, jurisdiction: jur, curriculumConfidence,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

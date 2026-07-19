@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeResourcePage } from '@/lib/style-lab-vision';
+import { errorMessage } from '@/lib/error-message';
 
 export const maxDuration = 120;
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
     const { cached, analysis } = await analyzeResourcePage(userId, resourceId, page, refresh);
     return NextResponse.json({ ok: true, cached, analysis });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     const status = message === 'Resource not found' ? 404 : message.includes('no PDF file') ? 400 : 500;
     return NextResponse.json({ error: message }, { status });
   }

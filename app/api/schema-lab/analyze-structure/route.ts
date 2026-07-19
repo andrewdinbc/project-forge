@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getPageCount, renderPageWithLayers } from '@/lib/pdf-layer-render';
+import { errorMessage } from '@/lib/error-message';
 
 const admin: any = supabaseAdmin;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -109,7 +110,7 @@ Respond with ONLY valid JSON, no prose, no markdown:
 
     return NextResponse.json({ ok: true, notes, title: resource.title });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
