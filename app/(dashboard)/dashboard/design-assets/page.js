@@ -11,9 +11,15 @@ import { getCurrentUser } from '@/lib/auth';
 // piece. Requires GEMINI_API_KEY and/or RECRAFT_API_KEY set in this
 // project's Vercel environment variables (Aj's own accounts/billing with
 // each provider -- Claude cannot create these). Aj, 2026-07-19.
+//
+// 2026-07-19: added optional reference image upload ("make it similar
+// to...") -- passed to both providers as a style/content guide alongside
+// the text prompt.
 export default function DesignAssetsPage() {
   const [userId, setUserId] = useState(null);
   const [prompt, setPrompt] = useState('');
+  const [referenceImage, setReferenceImage] = useState(null); // data URL
+  const [referenceFileName, setReferenceFileName] = useState(null);
   const [generating, setGenerating] = useState({ gemini: false, recraft: false });
   const [results, setResults] = useState({ gemini: null, recraft: null });
   const [errors, setErrors] = useState({ gemini: null, recraft: null });
@@ -28,6 +34,19 @@ export default function DesignAssetsPage() {
       .catch(() => router.push('/auth/login'));
   }, [router]);
 
+  function handleReferenceUpload(file) {
+    if (!file) return;
+    setReferenceFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setReferenceImage(reader.result);
+    reader.readAsDataURL(file);
+  }
+
+  function clearReference() {
+    setReferenceImage(null);
+    setReferenceFileName(null);
+  }
+
   async function generate(provider) {
     if (!prompt.trim() || !userId) return;
     setGenerating((prev) => ({ ...prev, [provider]: true }));
@@ -36,7 +55,7 @@ export default function DesignAssetsPage() {
       const res = await fetch('/api/design-assets/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, prompt, provider }),
+        body: JSON.stringify({ userId, prompt, provider, referenceImage: referenceImage || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -51,6 +70,17 @@ export default function DesignAssetsPage() {
   function generateBoth() {
     generate('gemini');
     generate('recraft');
+  }
+
+  // Surfaces the two most common real errors with a plain-language
+  // explanation instead of the raw API error text, since neither is a
+  // bug to "fix" -- they're account/quota conditions on Aj's side.
+  function friendlyError(raw) {
+    if (!raw) return null;
+    if (raw.includes('429') || raw.toLowerCase().includes('quota')) {
+      return `${raw}\n\nThis is a rate/quota limit on your Gemini account, not a bug -- check your plan and billing at ai.google.dev, or wait for the quota to reset.`;
+    }
+    return raw;
   }
 
   function Panel({ provider, label }) {
@@ -71,7 +101,7 @@ export default function DesignAssetsPage() {
         </div>
         <div style={{ border: '1px solid #e3ddd0', borderRadius: 8, background: '#f7f5f0', minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
           {isBusy && <p style={{ fontSize: 12, color: '#999' }}>Generating…</p>}
-          {!isBusy && error && <p style={{ fontSize: 12, color: '#a33', padding: 12, textAlign: 'center' }}>{error}</p>}
+          {!isBusy && error && <p style={{ fontSize: 12, color: '#a33', padding: 12, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{friendlyError(error)}</p>}
           {!isBusy && !error && url && (
             <img src={url} alt={`${label} output`} style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 4 }} />
           )}
@@ -92,7 +122,8 @@ export default function DesignAssetsPage() {
       <p style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
         Compare Gemini and Recraft on generating clean, colorable line art -- the kind of illustration a
         color-by-number or coloring page needs. Both providers get the same prompt plus the same
-        line-art style instructions, so it's an apples-to-apples comparison.
+        line-art style instructions, so it's an apples-to-apples comparison. Optionally upload a
+        reference image to guide the style or content toward something specific.
       </p>
       <div style={{ background: '#eef4fb', border: '1px solid #c8dcf0', borderRadius: 8, padding: 10, marginBottom: 20, fontSize: 12, color: '#333' }}>
         Requires <code>GEMINI_API_KEY</code> and/or <code>RECRAFT_API_KEY</code> set in this project's
@@ -100,7 +131,7 @@ export default function DesignAssetsPage() {
         one is missing.
       </div>
 
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#1c3557', marginBottom: 6 }}>
           Describe the illustration
         </label>
@@ -120,6 +151,26 @@ export default function DesignAssetsPage() {
             Generate Both
           </button>
         </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#1c3557', marginBottom: 6 }}>
+          Reference image (optional) -- "make it similar to..."
+        </label>
+        {referenceImage ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img src={referenceImage} alt="Reference" style={{ height: 60, width: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid #e3ddd0' }} />
+            <span style={{ fontSize: 12, color: '#555' }}>{referenceFileName}</span>
+            <button onClick={clearReference} style={{ fontSize: 11, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+              Remove
+            </button>
+          </div>
+        ) : (
+          <label style={{ display: 'inline-block', padding: '6px 14px', background: '#f0eee7', color: '#1c3557', border: '1px solid #e3ddd0', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            📎 Upload a reference image
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleReferenceUpload(e.target.files?.[0])} />
+          </label>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
