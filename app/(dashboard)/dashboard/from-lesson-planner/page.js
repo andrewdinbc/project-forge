@@ -25,6 +25,7 @@ export default function FromLessonPlannerPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null); // { url, title } for the in-app PDF preview modal
   const router = useRouter();
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function FromLessonPlannerPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: 'pushed_to_steering' } : x)));
+      setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: 'pushed_to_steering', edited_text: data.resource?.edited_text ?? x.edited_text } : x)));
     } catch (e) {
       setError(`Couldn't push "${r.title}" to AI Steering: ${e.message}`);
     } finally {
@@ -97,7 +98,12 @@ export default function FromLessonPlannerPage() {
                       )}
                       <span style={{ fontSize: 11, fontWeight: 600, color: statusInfo.color }}>{statusInfo.label}</span>
                       {r.file_url && (
-                        <a href={r.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#2f6b41' }}>📄 View file</a>
+                        <button
+                          onClick={() => setPreviewUrl({ url: r.file_url, title: r.title })}
+                          style={{ fontSize: 11, color: '#2f6b41', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}
+                        >
+                          👁 Preview
+                        </button>
                       )}
                       {r.source_url && (
                         <a href={r.source_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#888' }}>🔗 Original link</a>
@@ -130,8 +136,10 @@ export default function FromLessonPlannerPage() {
       <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1c3557', marginBottom: 4 }}>📚 From Lesson Planner</h1>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
         Every PDF or URL an end user has uploaded in lesson-planner's Resources step lands here automatically.
-        Push any of them straight into AI Steering, where they'll immediately start shaping future AI generation
-        across the Chalk &amp; Circuit ecosystem.
+        Preview a PDF before deciding what to do with it, then push any of them straight into AI Steering --
+        content is automatically cleaned by AI first (cover pages, tables of contents, teacher information pages,
+        terms of use, and credits are stripped out), and it's then live shaping future AI generation across the
+        Chalk &amp; Circuit ecosystem.
       </p>
       {error && (
         <div style={{ background: '#fdecea', border: '1px solid #f3c2bb', borderRadius: 6, padding: 10, marginBottom: 16, fontSize: 12, color: '#a33' }}>
@@ -140,6 +148,30 @@ export default function FromLessonPlannerPage() {
       )}
       <Section title="PDFs" items={pdfs} icon="📄" />
       <Section title="URLs" items={urls} icon="🔗" />
+
+      {previewUrl && (
+        <div
+          onClick={() => setPreviewUrl(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 300,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 10, width: '100%', maxWidth: 900, height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e3ddd0' }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#1c3557', margin: 0 }}>{previewUrl.title}</p>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <a href={previewUrl.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2f6b41' }}>Open in new tab ↗</a>
+                <button onClick={() => setPreviewUrl(null)} style={{ background: 'none', border: 'none', fontSize: 20, lineHeight: 1, cursor: 'pointer', color: '#999' }}>×</button>
+              </div>
+            </div>
+            <iframe src={previewUrl.url} title={previewUrl.title} style={{ flex: 1, border: 'none' }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
