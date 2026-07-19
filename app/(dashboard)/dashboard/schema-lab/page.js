@@ -223,7 +223,22 @@ export default function SchemaLabPage() {
                                 </div>
                               ))}
                             </div>
-                            <a href="/dashboard/style-lab" style={{ fontSize: 11, color: C.navy }}>Open in Style Lab to edit, or Composer to lay it out →</a>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <a href="/dashboard/style-lab" style={{ fontSize: 11, color: C.navy }}>Open in Style Lab to edit, or Composer to lay it out →</a>
+                              <button
+                                onClick={() => {
+                                  const comps = genResult.content?.components || []
+                                  const items = comps.map((c) => ({ label: c.name, content: c.content }))
+                                  sessionStorage.setItem('foldableShapePrefill', JSON.stringify({
+                                    title: genResult.content?.title, items,
+                                  }))
+                                  window.location.href = '/dashboard/foldable-shapes'
+                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+                              >
+                                🗂 Render as Foldable
+                              </button>
+                            </div>
                           </div>
                         )
                       )}
