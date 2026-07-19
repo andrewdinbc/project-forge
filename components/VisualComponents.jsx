@@ -109,45 +109,13 @@ export default function VisualComponents({ userId, resourceId }) {
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 6 }}>
       {/* LEFT: layers + palette */}
       <div style={{ flex: '1 1 260px', minWidth: 220 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#2f6b41', marginBottom: 6 }}>Visual components</div>
-
-        {/* Page selector -- its own clearly-visible row, not buried next to Re-analyze.
-            Shown as soon as we know the page count (even from a prior page's analysis),
-            not gated on the current page's own analysis finishing, so switching pages
-            never makes the control disappear. Aj, 2026-07-19: wanted an explicit way to
-            pick a page, not just tiny prev/next arrows. */}
-        {(analysis?.pageCount || 1) > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '6px 10px', background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#1c3557' }}>📄 Page</span>
-            <select
-              value={page}
-              disabled={loading}
-              onChange={(e) => setPage(parseInt(e.target.value, 10))}
-              style={{ fontSize: 12, fontWeight: 600, color: '#1c3557', border: '1px solid #b8dcc2', borderRadius: 4, padding: '3px 6px', background: '#fff', cursor: loading ? 'default' : 'pointer' }}
-            >
-              {Array.from({ length: analysis.pageCount }, (_, i) => i + 1).map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-            <span style={{ fontSize: 11, color: '#555' }}>of {analysis.pageCount}</span>
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={loading || page <= 1}
-              style={{ fontSize: 12, border: '1px solid #b8dcc2', borderRadius: 4, padding: '2px 8px', background: '#fff', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>←</button>
-            <button onClick={() => setPage((p) => Math.min(analysis.pageCount, p + 1))} disabled={loading || page >= analysis.pageCount}
-              style={{ fontSize: 12, border: '1px solid #b8dcc2', borderRadius: 4, padding: '2px 8px', background: '#fff', cursor: page >= analysis.pageCount ? 'default' : 'pointer', opacity: page >= analysis.pageCount ? 0.4 : 1 }}>→</button>
-            <button onClick={() => analyze(true)} disabled={loading}
-              style={{ marginLeft: 'auto', fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 6px', cursor: loading ? 'default' : 'pointer' }}>
-              ↻ Re-analyze
-            </button>
-          </div>
-        )}
-        {(analysis?.pageCount || 1) <= 1 && (
-          <div style={{ marginBottom: 8 }}>
-            <button onClick={() => analyze(true)} disabled={loading}
-              style={{ fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 6px', cursor: loading ? 'default' : 'pointer' }}>
-              ↻ Re-analyze
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#2f6b41' }}>Visual components</div>
+          <button onClick={() => analyze(true)} disabled={loading}
+            style={{ fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 6px', cursor: loading ? 'default' : 'pointer' }}>
+            ↻ Re-analyze
+          </button>
+        </div>
 
         {loading && <p style={{ fontSize: 12, color: '#888' }}>Identifying components on this page…</p>}
         {error && <p style={{ fontSize: 12, color: '#a33' }}>{error}</p>}
@@ -212,8 +180,30 @@ export default function VisualComponents({ userId, resourceId }) {
         </div>
       </div>
 
-      {/* RIGHT: the composited page */}
+      {/* RIGHT: page selector (sits directly above the page it controls) + composited page */}
       <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+        {/* Per Aj, 2026-07-19: moved here from the left column -- makes more sense next
+            to the page it's actually selecting, and there's room for it here. */}
+        {(analysis?.pageCount || 1) > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 10px', background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#1c3557' }}>📄 Page</span>
+            <select
+              value={page}
+              disabled={loading}
+              onChange={(e) => setPage(parseInt(e.target.value, 10))}
+              style={{ fontSize: 12, fontWeight: 600, color: '#1c3557', border: '1px solid #b8dcc2', borderRadius: 4, padding: '3px 6px', background: '#fff', cursor: loading ? 'default' : 'pointer' }}
+            >
+              {Array.from({ length: analysis.pageCount }, (_, i) => i + 1).map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 11, color: '#555' }}>of {analysis.pageCount}</span>
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={loading || page <= 1}
+              style={{ fontSize: 12, border: '1px solid #b8dcc2', borderRadius: 4, padding: '2px 8px', background: '#fff', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>←</button>
+            <button onClick={() => setPage((p) => Math.min(analysis.pageCount, p + 1))} disabled={loading || page >= analysis.pageCount}
+              style={{ fontSize: 12, border: '1px solid #b8dcc2', borderRadius: 4, padding: '2px 8px', background: '#fff', cursor: page >= analysis.pageCount ? 'default' : 'pointer', opacity: page >= analysis.pageCount ? 0.4 : 1 }}>→</button>
+          </div>
+        )}
         <div style={{ position: 'relative', border: '1px solid #e3ddd0', borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
           <canvas ref={canvasRef} style={{ width: '100%', display: 'block' }} />
           {/* hover highlight */}
