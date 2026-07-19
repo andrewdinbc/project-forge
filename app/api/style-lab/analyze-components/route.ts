@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
-import { renderPageWithLayers } from '@/lib/pdf-layer-render';
+import { getPageCount, renderPageWithLayers } from '@/lib/pdf-layer-render';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 
 const admin: any = supabaseAdmin;
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     if (!pdfRes.ok) return NextResponse.json({ error: `Could not download the PDF (${pdfRes.status})` }, { status: 422 });
     const pdfBytes = Buffer.from(await pdfRes.arrayBuffer());
 
+    const pageCount = await getPageCount(pdfBytes);
     const png = await renderPageWithLayers(pdfBytes, page, { text: true, images: true }, 1.5);
     const img = await loadImage(png);
     const canvas = createCanvas(img.width, img.height);
@@ -131,6 +132,7 @@ Respond with ONLY valid JSON, no prose, no markdown:
     const analysis = {
       version: 1,
       page,
+      pageCount,
       imageUrl: urlData.publicUrl,
       width: img.width,
       height: img.height,

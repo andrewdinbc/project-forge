@@ -109,12 +109,21 @@ export default function VisualComponents({ userId, resourceId }) {
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 6 }}>
       {/* LEFT: layers + palette */}
       <div style={{ flex: '1 1 260px', minWidth: 220 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#2f6b41' }}>Visual components</div>
           <button onClick={() => analyze(true)} disabled={loading}
             style={{ fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 6px', cursor: loading ? 'default' : 'pointer' }}>
             ↻ Re-analyze
           </button>
+          {analysis?.pageCount > 1 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={loading || page <= 1}
+                style={{ fontSize: 10, border: '1px solid #b8dcc2', borderRadius: 4, padding: '2px 6px', background: '#fff', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>←</button>
+              <span style={{ fontSize: 10, color: '#555' }}>Page {page}/{analysis.pageCount}</span>
+              <button onClick={() => setPage((p) => Math.min(analysis.pageCount, p + 1))} disabled={loading || page >= analysis.pageCount}
+                style={{ fontSize: 10, border: '1px solid #b8dcc2', borderRadius: 4, padding: '2px 6px', background: '#fff', cursor: page >= analysis.pageCount ? 'default' : 'pointer', opacity: page >= analysis.pageCount ? 0.4 : 1 }}>→</button>
+            </span>
+          )}
         </div>
 
         {loading && <p style={{ fontSize: 12, color: '#888' }}>Identifying components on this page…</p>}
