@@ -13,6 +13,13 @@ interface ComponentOption {
   products: { id: string; title: string; file_url: string | null };
 }
 
+interface GeneratedItem {
+  tempId: string;
+  category: string;
+  label: string;
+  content: string;
+}
+
 interface Props {
   userId: string;
   productIds: string[];
@@ -38,6 +45,16 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   const [applyingInstruction, setApplyingInstruction] = useState(false);
   const [instructionError, setInstructionError] = useState<string | null>(null);
   const [lastReasoning, setLastReasoning] = useState<string | null>(null);
+
+  // AI-generated content that fills a genuine gap the AI couldn't fulfill
+  // from existing tagged pages (e.g. no Force and Motion color-by-number
+  // exists, so it wrote one grounded in the tagged Force and Motion
+  // material). Not real source pages -- rendered fresh onto new pages at
+  // generate time. Kept separate from `components` since these have no
+  // database row, only a client-side tempId.
+  const [generatedItems, setGeneratedItems] = useState<GeneratedItem[]>([]);
+  const [includedGenerated, setIncludedGenerated] = useState<Record<string, boolean>>({});
+  const [expandedGenerated, setExpandedGenerated] = useState<Record<string, boolean>>({});
 
   async function loadComponents() {
     setLoading(true);
@@ -93,15 +110,27 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
     return components.filter((c) => c.category === categoryKey);
   }
 
+  function generatedFor(categoryKey: string) {
+    return generatedItems.filter((g) => g.category === categoryKey);
+  }
+
   function toggle(componentId: string) {
     setIncluded((prev) => ({ ...prev, [componentId]: !prev[componentId] }));
   }
 
+  function toggleGenerated(tempId: string) {
+    setIncludedGenerated((prev) => ({ ...prev, [tempId]: !prev[tempId] }));
+  }
+
   // Sends the freeform instruction + full component list to the AI, which
-  // returns include/exclude decisions only for the items it has an
-  // opinion on. Anything it doesn't mention is left exactly as the
-  // teacher already had it -- a partial instruction can't silently wipe
-  // out unrelated manual choices.
+  // returns include/exclude decisions for existing items it has an
+  // opinion on, PLUS newly-written content for any genuine gap it
+  // couldn't fill from existing tagged pages (e.g. "make a color by
+  // number of the Force and Motion content" when no such page exists --
+  // the AI writes one, grounded in the actual tagged Force and Motion
+  // material, instead of substituting something unrelated or giving up).
+  // Anything the AI doesn't mention among existing components is left
+  // exactly as the teacher already had it.
   async function handleApplyInstruction() {
     if (!instruction.trim()) return;
     setApplyingInstruction(true);
@@ -133,6 +162,17 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
         for (const id of data.exclude || []) next[id] = false;
         return next;
       });
+
+      const newGenerated: GeneratedItem[] = data.generated || [];
+      if (newGenerated.length > 0) {
+        setGeneratedItems((prev) => [...prev, ...newGenerated]);
+        setIncludedGenerated((prev) => {
+          const next = { ...prev };
+          for (const g of newGenerated) next[g.tempId] = true;
+          return next;
+        });
+      }
+
       setLastReasoning(data.reasoning || null);
     } catch (e) {
       setInstructionError(e instanceof Error ? e.message : 'Failed to apply instruction');
@@ -152,7 +192,11 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       }
     }
 
-    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0);
+    const generatedContent = generatedItems
+      .filter((g) => includedGenerated[g.tempId])
+      .map((g) => ({ category: g.category, label: g.label, content: g.content }));
+
+    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0;
     if (!hasAnySelection) {
       alert('Select at least one component to include.');
       return;
@@ -164,7 +208,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       const res = await fetch('/api/composer/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, title, productIds, selections }),
+        body: JSON.stringify({ userId, title, productIds, selections, generatedContent }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -242,14 +286,17 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
         <p className="text-xs text-slate-500 mt-0.5 mb-3">
           Describe what to include in plain language, e.g. "I like the interactive notebook
           aspects of Force and Motion, apply that to Human Body Systems." The AI will flip the
-          relevant toggles below -- anything it's not sure about is left as-is.
+          relevant toggles below. If what you ask for doesn't exist among your tagged pages, it
+          will write new content to fill that gap instead of substituting something unrelated --
+          grounded in your actual tagged material, shown below with an AI-generated badge so you
+          can review it before including it.
         </p>
         <div className="flex gap-2">
           <textarea
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
             rows={2}
-            placeholder="e.g. Use the answer keys from both products, and the cover page from Force and Motion"
+            placeholder="e.g. Make a color by number out of the Force and Motion content"
             className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none"
           />
           <button
@@ -276,11 +323,12 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
           <div className="space-y-5">
             {group.categories.map((cat) => {
               const items = componentsFor(cat.key);
+              const genItems = generatedFor(cat.key);
 
               return (
                 <div key={cat.key}>
                   <span className="text-sm font-medium text-slate-800">{cat.label}</span>
-                  {items.length === 0 ? (
+                  {items.length === 0 && genItems.length === 0 ? (
                     <p className="text-xs text-slate-400 italic mt-1">
                       None of the selected products have this tagged.
                     </p>
@@ -317,6 +365,53 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
                                 }`}
                               />
                             </button>
+                          </div>
+                        );
+                      })}
+                      {genItems.map((item) => {
+                        const isOn = !!includedGenerated[item.tempId];
+                        const isExpanded = !!expandedGenerated[item.tempId];
+                        return (
+                          <div
+                            key={item.tempId}
+                            className="border border-purple-200 bg-purple-50 rounded-lg px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium text-slate-800 truncate flex items-center gap-2">
+                                  {item.label}
+                                  <span className="text-[9px] font-semibold text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                                    ✨ AI-generated
+                                  </span>
+                                </p>
+                                <button
+                                  onClick={() => setExpandedGenerated((prev) => ({ ...prev, [item.tempId]: !prev[item.tempId] }))}
+                                  className="text-[10px] text-purple-700 underline mt-0.5"
+                                >
+                                  {isExpanded ? 'Hide preview' : 'Preview content'}
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isOn}
+                                onClick={() => toggleGenerated(item.tempId)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                                  isOn ? 'bg-purple-600' : 'bg-slate-300'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                    isOn ? 'translate-x-4' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                            {isExpanded && (
+                              <pre className="mt-2 text-[11px] text-slate-700 whitespace-pre-wrap bg-white border border-purple-100 rounded p-2 max-h-64 overflow-auto">
+                                {item.content}
+                              </pre>
+                            )}
                           </div>
                         );
                       })}
