@@ -18,6 +18,14 @@ const LEVELS = [
   { key: 'background', label: 'Background', hint: 'Borders, framing, backdrop' },
 ];
 
+// Common built-in system fonts don't need a "find similar / buy" prompt --
+// nobody needs to license Tahoma. Aj, 2026-07-19.
+const SYSTEM_FONTS = new Set([
+  'Tahoma', 'Arial', 'Helvetica', 'Times New Roman', 'TimesNewRomanPSMT', 'Courier', 'CourierNewPSMT',
+  'Courier New', 'Calibri', 'Verdana', 'Georgia', 'Wingdings', 'Wingdings-Regular', 'Symbol',
+  'Comic Sans MS', 'Trebuchet MS', 'Impact',
+]);
+
 export default function VisualComponents({ userId, resourceId }) {
   const [page, setPage] = useState(1);
   const [analysis, setAnalysis] = useState(null);
@@ -29,6 +37,7 @@ export default function VisualComponents({ userId, resourceId }) {
   const [savedMsg, setSavedMsg] = useState(null);
   const [savingFonts, setSavingFonts] = useState(false);
   const [savedFontsMsg, setSavedFontsMsg] = useState(null);
+  const [fontSearch, setFontSearch] = useState({}); // fontName -> { loading, data, error }
   const [inpainting, setInpainting] = useState(false);
   const [inpaintMsg, setInpaintMsg] = useState(null);
   const [inpaintedUrl, setInpaintedUrl] = useState(null);
@@ -168,6 +177,26 @@ export default function VisualComponents({ userId, resourceId }) {
     finally { setSavingFonts(false); }
   }
 
+  // Per Aj, 2026-07-19: "a button that will find similar and it will search
+  // for similar free fonts... also buy the font if I am not satisfied with
+  // what alternatives are." Free alternatives come from a real web search
+  // (server-side); the buy link is a plain search URL built right here --
+  // deliberately not AI-guessed, so it can't point somewhere wrong.
+  async function findSimilarFonts(fontName) {
+    setFontSearch((prev) => ({ ...prev, [fontName]: { loading: true, data: null, error: null } }));
+    try {
+      const res = await fetch('/api/style-lab/similar-fonts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fontName }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Search failed');
+      setFontSearch((prev) => ({ ...prev, [fontName]: { loading: false, data: d, error: null } }));
+    } catch (e) {
+      setFontSearch((prev) => ({ ...prev, [fontName]: { loading: false, data: null, error: e.message } }));
+    }
+  }
+
   // AI generative fill (Replicate, LaMa inpainting model): reconstructs what's
   // actually behind the removed component(s) instead of the flat edge-color
   // guess above -- for banners/borders sitting on a pattern or gradient where
@@ -255,13 +284,51 @@ export default function VisualComponents({ userId, resourceId }) {
         {analysis && analysis.fonts?.length > 0 && (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#1c3557', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>Fonts used</div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {analysis.fonts.map((f, i) => (
-                <span key={i} style={{ fontSize: 10, color: '#333', background: '#f0ece3', borderRadius: 4, padding: '2px 6px' }}>{f}</span>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {analysis.fonts.map((f, i) => {
+                const isSystem = SYSTEM_FONTS.has(f);
+                const search = fontSearch[f];
+                const buyUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${f}" font commercial license buy`)}`;
+                return (
+                  <div key={i}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 10, color: '#333', background: '#f0ece3', borderRadius: 4, padding: '2px 6px' }}>{f}</span>
+                      {!isSystem && (
+                        <>
+                          <button onClick={() => findSimilarFonts(f)} disabled={search?.loading}
+                            style={{ fontSize: 9, color: '#7a3c8a', background: 'none', border: 'none', textDecoration: 'underline', cursor: search?.loading ? 'default' : 'pointer', padding: 0 }}>
+                            {search?.loading ? 'Searching…' : '🔍 Find similar free fonts'}
+                          </button>
+                          <a href={buyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: '#2f6b41', textDecoration: 'underline' }}>
+                            💳 Buy this font
+                          </a>
+                        </>
+                      )}
+                    </div>
+                    {search?.error && <p style={{ fontSize: 9, color: '#a33', margin: '2px 0 0 4px' }}>{search.error}</p>}
+                    {search?.data && (
+                      <div style={{ margin: '4px 0 4px 4px', padding: '6px 8px', background: '#fafafa', border: '1px solid #eee', borderRadius: 6 }}>
+                        {search.data.originalStyle && (
+                          <p style={{ fontSize: 9, color: '#888', margin: '0 0 4px', fontStyle: 'italic' }}>{search.data.originalStyle}</p>
+                        )}
+                        {search.data.alternatives.length === 0 ? (
+                          <p style={{ fontSize: 9, color: '#aaa', margin: 0 }}>No close matches found -- try "Buy this font" instead.</p>
+                        ) : (
+                          search.data.alternatives.map((a, j) => (
+                            <div key={j} style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
+                              <a href={a.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 600, color: '#1c3557' }}>{a.name}</a>
+                              <span style={{ fontSize: 9, color: '#888' }}>{a.reason}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <button onClick={saveFonts} disabled={savingFonts}
-              style={{ marginTop: 4, fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 8px', cursor: savingFonts ? 'default' : 'pointer' }}>
+              style={{ marginTop: 6, fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '2px 8px', cursor: savingFonts ? 'default' : 'pointer' }}>
               {savingFonts ? 'Saving…' : '⭐ Save font names'}
             </button>
             {savedFontsMsg && <span style={{ fontSize: 10, color: savedFontsMsg.startsWith('Saved') || savedFontsMsg.startsWith('Already') ? '#2f6b41' : '#a33', marginLeft: 6 }}>{savedFontsMsg}</span>}
