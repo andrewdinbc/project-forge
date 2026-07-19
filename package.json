@@ -23,7 +23,8 @@
     "pdf-parse": "^1.1.1",
     "pngjs": "^7.0.0",
     "unpdf": "^0.12.1",
-    "@napi-rs/canvas": "^0.1.53"
+    "@napi-rs/canvas": "^0.1.53",
+    "fabric": "^7.4.0"
   },
   "devDependencies": {
     "tailwindcss": "^3.3.0",

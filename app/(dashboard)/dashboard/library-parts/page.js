@@ -187,6 +187,12 @@ export default function LibraryPartsPage() {
                     >
                       ✨ Generate matching set
                     </button>
+                    <a
+                      href={`/dashboard/asset-modifier?${new URLSearchParams({ assetUrl: p.file_url || '', title: p.title || 'Asset', sourcePartId: p.id }).toString()}`}
+                      style={{ fontSize: 9, color: '#2f6b41', textDecoration: 'underline' }}
+                    >
+                      🎨 Push to Asset Modifier
+                    </a>
                   </div>
                   {genFor === p.id && (
                     <div style={{ marginTop: 6, padding: 6, background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 6 }}>

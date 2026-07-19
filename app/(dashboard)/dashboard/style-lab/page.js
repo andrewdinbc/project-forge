@@ -58,6 +58,33 @@ export default function StyleLabPage() {
   const [savedToLibrary, setSavedToLibrary] = useState({}) // resourceId -> true, for Parts Library star button
   const router = useRouter()
 
+  // Per Aj, 2026-07-19: replaces "Push to AI Steering" / "Mark for TPT" on
+  // the resource card with a single entry into the Asset Modifier. Uses the
+  // resource's cached analyzed-page image if there is one; otherwise
+  // triggers a quick page-1 analysis first so there's always something to
+  // load onto the canvas.
+  const [pushingId, setPushingId] = useState(null)
+  async function pushToAssetModifier(r) {
+    setPushingId(r.id)
+    try {
+      let imageUrl = r.visual_analysis?.imageUrl
+      if (!imageUrl) {
+        const res = await fetch('/api/style-lab/analyze-components', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, resourceId: r.id, page: 1 }),
+        })
+        const d = await res.json()
+        if (res.ok) imageUrl = d.analysis?.imageUrl
+      }
+      const params = new URLSearchParams({ title: r.title || 'Asset', sourcePartId: '' })
+      if (imageUrl) params.set('assetUrl', imageUrl)
+      router.push(`/dashboard/asset-modifier?${params.toString()}`)
+    } finally {
+      setPushingId(null)
+    }
+  }
+
+
   useEffect(() => {
     getCurrentUser()
       .then((user) => {
@@ -834,16 +861,10 @@ export default function StyleLabPage() {
                 Save Edit
               </button>
               <button
-                onClick={() => runAction(r, 'push_to_steering')} disabled={busyId === r.id || r.status === 'pushed_to_steering'}
-                style={{ padding: '5px 12px', background: C.gold, color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: r.status === 'pushed_to_steering' ? 'default' : 'pointer', opacity: r.status === 'pushed_to_steering' ? 0.6 : 1 }}
+                onClick={() => pushToAssetModifier(r)} disabled={pushingId === r.id}
+                style={{ padding: '5px 12px', background: '#7a3c8a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: pushingId === r.id ? 'default' : 'pointer', opacity: pushingId === r.id ? 0.6 : 1 }}
               >
-                {r.status === 'pushed_to_steering' ? '✓ In AI Steering' : '→ Push to AI Steering'}
-              </button>
-              <button
-                onClick={() => runAction(r, 'mark_for_tpt')} disabled={busyId === r.id || ['marked_for_tpt', 'tpt_package_ready'].includes(r.status)}
-                style={{ padding: '5px 12px', background: '#7a3c8a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: ['marked_for_tpt', 'tpt_package_ready'].includes(r.status) ? 'default' : 'pointer', opacity: ['marked_for_tpt', 'tpt_package_ready'].includes(r.status) ? 0.6 : 1 }}
-              >
-                {['marked_for_tpt', 'tpt_package_ready'].includes(r.status) ? '🏷 Marked for TPT' : '🏷 Mark for TPT'}
+                {pushingId === r.id ? 'Opening…' : '🎨 Push to Asset Modifier'}
               </button>
               {['marked_for_tpt', 'tpt_package_ready'].includes(r.status) && (
                 <button
