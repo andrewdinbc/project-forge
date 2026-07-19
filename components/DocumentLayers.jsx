@@ -20,6 +20,8 @@ export default function DocumentLayers({ userId, resourceId }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(null);
   const objUrlRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -38,6 +40,7 @@ export default function DocumentLayers({ userId, resourceId }) {
   async function load() {
     setLoading(true);
     setError(null);
+    setSavedMsg(null);
     try {
       const res = await fetch(buildUrl(), { cache: 'no-store' });
       if (!res.ok) {
@@ -68,6 +71,25 @@ export default function DocumentLayers({ userId, resourceId }) {
   useEffect(() => () => { if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current); }, []);
 
   const toggle = (k) => setLayers((prev) => ({ ...prev, [k]: !prev[k] }));
+
+  async function saveView() {
+    setSaving(true);
+    setSavedMsg(null);
+    try {
+      const res = await fetch('/api/style-lab/save-part', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, resourceId, page, scale: 2, text: layers.text, images: layers.images }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Save failed');
+      setSavedMsg('Saved to Parts Library ✓');
+    } catch (e) {
+      setSavedMsg(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 6 }}>
@@ -122,9 +144,21 @@ export default function DocumentLayers({ userId, resourceId }) {
           )}
         </div>
         {imgUrl && !error && (
-          <a href={imgUrl} download={`page-${page}.png`} style={{ fontSize: 11, color: '#2f6b41', display: 'inline-block', marginTop: 6 }}>
-            ⬇ Download this view (PNG)
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+            <a href={imgUrl} download={`page-${page}.png`} style={{ fontSize: 11, color: '#2f6b41' }}>
+              ⬇ Download this view (PNG)
+            </a>
+            <button
+              onClick={saveView}
+              disabled={saving}
+              style={{ fontSize: 11, fontWeight: 600, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 5, padding: '3px 10px', cursor: saving ? 'default' : 'pointer' }}
+            >
+              {saving ? 'Saving…' : '⭐ Save this view to Parts Library'}
+            </button>
+            {savedMsg && (
+              <span style={{ fontSize: 11, color: savedMsg.startsWith('Saved') ? '#2f6b41' : '#a33' }}>{savedMsg}</span>
+            )}
+          </div>
         )}
       </div>
     </div>
