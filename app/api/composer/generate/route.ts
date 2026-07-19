@@ -7,10 +7,14 @@ interface GenerateRequestBody {
   userId: string;
   title: string;
   productIds: string[];
-  // Per-category pick: which componentId to use, or null to exclude that
-  // category entirely from the hybrid. This is what the composer's
-  // sliders resolve to on the client before calling this endpoint.
-  selections: Record<string, string | null>;
+  // Per-category picks: which componentIds to include (0, 1, or many --
+  // multiple tagged items within the same category, even from different
+  // source products, can all be included at once now). Empty/missing
+  // array means that category is excluded entirely. This is what the
+  // composer's per-item toggles resolve to on the client before calling
+  // this endpoint. (2026-07-19: widened from a single componentId per
+  // category to an array, so items no longer have to compete for one slot.)
+  selections: Record<string, string[]>;
 }
 
 export async function POST(request: NextRequest) {
@@ -35,49 +39,54 @@ export async function POST(request: NextRequest) {
     // Assemble in a fixed, sensible order (front matter, then
     // instructional content, then classroom materials) regardless of the
     // order categories were selected in, so the output reads like a real
-    // TPT resource rather than a random shuffle.
+    // TPT resource rather than a random shuffle. Within a category,
+    // multiple included items are appended in the order their IDs appear
+    // in the selection array (client sends them in tagged/sort_order).
     for (const categoryKey of ASSEMBLY_ORDER) {
-      const componentId = selections[categoryKey];
-      if (!componentId) continue; // excluded for this category
+      const componentIds = selections[categoryKey];
+      if (!componentIds || componentIds.length === 0) continue; // excluded for this category
 
-      const component: any = componentsById.get(componentId);
-      if (!component) {
-        skipped.push(`${categoryKey}: component not found`);
-        continue;
-      }
-
-      const sourceFileUrl = component.products?.file_url;
-      if (!sourceFileUrl) {
-        skipped.push(`${categoryKey}: source product has no file_url`);
-        continue;
-      }
-
-      try {
-        const pdfRes = await fetch(sourceFileUrl);
-        if (!pdfRes.ok) {
-          skipped.push(`${categoryKey}: failed to fetch source PDF (${pdfRes.status})`);
+      for (const componentId of componentIds) {
+        const component: any = componentsById.get(componentId);
+        const label = `${categoryKey}${component ? ` (${component.products?.title || 'unknown source'})` : ''}`;
+        if (!component) {
+          skipped.push(`${label}: component not found`);
           continue;
         }
-        const pdfBytes = await pdfRes.arrayBuffer();
-        const sourceDoc = await PDFDocument.load(pdfBytes);
 
-        // page_start/page_end are 1-indexed and inclusive as tagged by the user.
-        const pageCount = sourceDoc.getPageCount();
-        const startIdx = Math.max(0, component.page_start - 1);
-        const endIdx = Math.min(pageCount - 1, component.page_end - 1);
-        if (startIdx > endIdx) {
-          skipped.push(`${categoryKey}: invalid page range for source PDF (${pageCount} pages)`);
+        const sourceFileUrl = component.products?.file_url;
+        if (!sourceFileUrl) {
+          skipped.push(`${label}: source product has no file_url`);
           continue;
         }
-        const indices = [];
-        for (let i = startIdx; i <= endIdx; i++) indices.push(i);
 
-        const copiedPages = await hybridDoc.copyPages(sourceDoc, indices);
-        copiedPages.forEach((p) => hybridDoc.addPage(p));
-        included.push(categoryKey);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        skipped.push(`${categoryKey}: ${msg}`);
+        try {
+          const pdfRes = await fetch(sourceFileUrl);
+          if (!pdfRes.ok) {
+            skipped.push(`${label}: failed to fetch source PDF (${pdfRes.status})`);
+            continue;
+          }
+          const pdfBytes = await pdfRes.arrayBuffer();
+          const sourceDoc = await PDFDocument.load(pdfBytes);
+
+          // page_start/page_end are 1-indexed and inclusive as tagged by the user.
+          const pageCount = sourceDoc.getPageCount();
+          const startIdx = Math.max(0, component.page_start - 1);
+          const endIdx = Math.min(pageCount - 1, component.page_end - 1);
+          if (startIdx > endIdx) {
+            skipped.push(`${label}: invalid page range for source PDF (${pageCount} pages)`);
+            continue;
+          }
+          const indices = [];
+          for (let i = startIdx; i <= endIdx; i++) indices.push(i);
+
+          const copiedPages = await hybridDoc.copyPages(sourceDoc, indices);
+          copiedPages.forEach((p) => hybridDoc.addPage(p));
+          included.push(label);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          skipped.push(`${label}: ${msg}`);
+        }
       }
     }
 
