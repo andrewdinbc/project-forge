@@ -72,7 +72,7 @@ Categories to identify (only tag a category if you're genuinely confident a page
 ${categoryList}
 
 Notes:
-- ${STYLE_ONLY.join(', ')} are document-wide style attributes, not distinct pages -- only include them if there's a clearly representative page/section, otherwise omit them entirely.
+- ${STYLE_ONLY.join(', ')} are document-wide style attributes, not distinct pages -- but nearly every document has SOME page that best represents each of these (e.g. the most text-heavy page for clean_fonts, a page with a visible border/frame or clear layout structure for borders_layout, the page with a logo/copyright line for branding_copyright, the most polished-looking student worksheet page for student_ready_formatting). Pick your best-guess representative page for each of these four rather than skipping them -- only omit one if the document genuinely has nothing usable for it (e.g. a single blank page with no visible layout or text at all).
 - Page ranges are 1-indexed and inclusive.
 - Most documents won't have every category -- that's normal, only tag what's actually there.
 
