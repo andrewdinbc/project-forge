@@ -93,6 +93,30 @@ export default function ProductDetailPage() {
     }
   }
 
+  // Push to AI Steering (Aj, 2026-07-19): moved here from Style Lab -- this
+  // is now the ONLY way anything reaches AI Steering, and it only ever
+  // reads from a product Aj actually authored and published.
+  const [pushingToSteering, setPushingToSteering] = useState(false);
+  async function handlePushToSteering() {
+    setPushingToSteering(true);
+    setError(null);
+    try {
+      const user = await getCurrentUser();
+      if (!user) { router.push('/auth/login'); return; }
+      const res = await fetch(`/api/products/${productId}/push-to-steering`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, productId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setProduct((prev: any) => ({ ...prev, pushed_to_steering_doc_id: data.steering_doc_id }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to push to AI Steering');
+    } finally {
+      setPushingToSteering(false);
+    }
+  }
+
   async function handleExtractImages() {
     setExtractingImages(true);
     setError(null);
@@ -168,6 +192,18 @@ export default function ProductDetailPage() {
             <button onClick={handleAutoTag} disabled={autoTagging} className="btn-primary mt-2">
               {autoTagging ? '🔍 Reading pages…' : '✨ AI Auto-Tag Components'}
             </button>
+            <button
+              onClick={handlePushToSteering}
+              disabled={pushingToSteering || !!product.pushed_to_steering_doc_id}
+              className="btn-primary mt-2 ml-2"
+              style={{ opacity: product.pushed_to_steering_doc_id ? 0.6 : 1 }}
+            >
+              {product.pushed_to_steering_doc_id ? '✓ In AI Steering' : pushingToSteering ? 'Pushing…' : '→ Push to AI Steering'}
+            </button>
+            <p className="text-xs text-slate-500 mt-1">
+              Only your own products can feed AI Steering -- imported/purchased reference material in
+              Style Lab no longer can.
+            </p>
             <p className="text-xs text-slate-500 mt-1">
               Reads every page and tags Cover Page, Answer Keys, Teacher Instructions, etc. automatically -- re-running replaces the previous AI pass.
             </p>

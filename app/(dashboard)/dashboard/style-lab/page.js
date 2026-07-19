@@ -52,7 +52,6 @@ export default function StyleLabPage() {
   const [personalTwist, setPersonalTwist] = useState('')
   const [blending, setBlending] = useState(false)
   const [profiles, setProfiles] = useState([])
-  const [profileBusyId, setProfileBusyId] = useState(null)
   const [contentDraft, setContentDraft] = useState({}) // profileId -> {subject, grade, topic, result}
   const [generatingContentId, setGeneratingContentId] = useState(null)
   const [userId, setUserId] = useState(null)
@@ -90,6 +89,24 @@ export default function StyleLabPage() {
     const params = new URLSearchParams({ tool: 'text', title: `${r.title || 'Resource'} lettering` })
     if (font) params.set('fontFamily', font)
     router.push(`/dashboard/asset-modifier?${params.toString()}`)
+  }
+
+  const [processingBusyId, setProcessingBusyId] = useState(null)
+  async function toggleProcessing(r) {
+    setProcessingBusyId(r.id)
+    try {
+      const res = await fetch('/api/style-lab/resources', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'toggle_processing', id: r.id, marked: !r.marked_for_processing }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
+      setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, marked_for_processing: d.resource.marked_for_processing } : x)))
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setProcessingBusyId(null)
+    }
   }
 
   // Bulk analyze (Aj, 2026-07-19): "I want beside each thing to have the
@@ -190,23 +207,6 @@ export default function StyleLabPage() {
       alert(`Couldn't create blend: ${e.message}`)
     } finally {
       setBlending(false)
-    }
-  }
-
-  async function pushProfileToSteering(profile) {
-    setProfileBusyId(profile.id)
-    try {
-      const res = await fetch('/api/style-lab/push-to-steering', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, id: profile.id }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setProfiles((prev) => prev.map((p) => (p.id === profile.id ? { ...p, pushed_to_steering_doc_id: data.steering_doc_id } : p)))
-    } catch (e) {
-      alert(e.message)
-    } finally {
-      setProfileBusyId(null)
     }
   }
 
@@ -553,12 +553,14 @@ export default function StyleLabPage() {
             <div key={p.id} style={{ background: '#fff', border: '1px solid #b8dcc2', borderRadius: 8, padding: 12, marginBottom: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#2f6b41' }}>{p.name}</div>
               <p style={{ fontSize: 12, color: '#555', margin: '4px 0' }}>{p.blended_style_text}</p>
-              <button
-                onClick={() => pushProfileToSteering(p)} disabled={profileBusyId === p.id || !!p.pushed_to_steering_doc_id}
-                style={{ padding: '5px 12px', background: C.gold, color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: p.pushed_to_steering_doc_id ? 'default' : 'pointer', opacity: p.pushed_to_steering_doc_id ? 0.6 : 1 }}
-              >
-                {p.pushed_to_steering_doc_id ? '✓ In AI Steering' : '→ Push to AI Steering'}
-              </button>
+              {/* Push to AI Steering removed from here, 2026-07-19 per Aj: steering
+                  should reflect his own published work, not blends built from
+                  imported/purchased reference material. Push to AI Steering now
+                  lives on the Dashboard product page instead. */}
+              <p style={{ fontSize: 10, color: '#999', fontStyle: 'italic', margin: '4px 0' }}>
+                Blends stay here for reference and to fine-tune generation dials -- they no longer push to AI
+                Steering. Steering now comes from your own products on the Dashboard.
+              </p>
 
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e6e0d5' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>
@@ -932,6 +934,19 @@ export default function StyleLabPage() {
                 style={{ padding: '5px 12px', background: '#7a3c8a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: pushingId === r.id ? 'default' : 'pointer', opacity: pushingId === r.id ? 0.6 : 1 }}
               >
                 {pushingId === r.id ? 'Opening…' : '🎨 Push to Asset Modifier'}
+              </button>
+              <button
+                onClick={() => toggleProcessing(r)} disabled={processingBusyId === r.id}
+                title={r.marked_for_processing ? 'Remove from Visual Layer Processing' : 'Flag this as inspiration you\'re actively drawing from'}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  cursor: processingBusyId === r.id ? 'default' : 'pointer',
+                  background: r.marked_for_processing ? '#eef6f0' : '#fff',
+                  color: r.marked_for_processing ? C.green : '#555',
+                  border: `1px solid ${r.marked_for_processing ? C.green : C.border}`,
+                }}
+              >
+                {r.marked_for_processing ? '✓ In Visual Layer Processing' : '🖼 Add to Visual Layer Processing'}
               </button>
               {(r.visual_analysis?.fonts || []).some((f) => !SYSTEM_FONTS.has(f)) && (
                 <button
