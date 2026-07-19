@@ -11,11 +11,10 @@ import { useEffect, useRef, useState } from 'react';
 const LAYERS = [
   { key: 'text', label: 'Text', hint: 'All words & typography' },
   { key: 'images', label: 'Images', hint: 'Clipart & photos' },
-  { key: 'graphics', label: 'Graphics', hint: 'Borders, lines, shapes, fills' },
 ];
 
 export default function DocumentLayers({ userId, resourceId }) {
-  const [layers, setLayers] = useState({ text: true, images: true, graphics: true });
+  const [layers, setLayers] = useState({ text: true, images: true });
   const [page, setPage] = useState(1);
   const [pageCount, setPageCount] = useState(1);
   const [imgUrl, setImgUrl] = useState(null);
@@ -32,7 +31,6 @@ export default function DocumentLayers({ userId, resourceId }) {
       scale: '1.5',
       text: layers.text ? '1' : '0',
       images: layers.images ? '1' : '0',
-      graphics: layers.graphics ? '1' : '0',
     });
     return `/api/style-lab/layer-render?${p.toString()}`;
   }
@@ -65,7 +63,7 @@ export default function DocumentLayers({ userId, resourceId }) {
     debounceRef.current = setTimeout(load, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resourceId, page, layers.text, layers.images, layers.graphics]);
+  }, [resourceId, page, layers.text, layers.images]);
 
   useEffect(() => () => { if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current); }, []);
 
@@ -101,8 +99,9 @@ export default function DocumentLayers({ userId, resourceId }) {
           </div>
         )}
         <div style={{ fontSize: 9, color: '#999', marginTop: 8, lineHeight: 1.4 }}>
-          These are the only "layers" a flat PDF can be split into — by content type, not the 8 style layers.
-          Uncheck one to see the page without it.
+          Uncheck <b>Images</b> to see the page with clipart & photos removed (text and borders stay);
+          uncheck <b>Text</b> to see just the visuals. These are the layers a flat PDF can be split into,
+          not the 8 style layers above.
         </div>
       </div>
 
