@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listResources, createResource, updateResource, getResource, flattenIncludedLayerText } from '@/lib/style-lab';
+import { listResources, createResource, updateResource, getResource, flattenIncludedLayerText, pushToSteering } from '@/lib/style-lab';
 import { extractPdfText } from '@/lib/pdf-extract';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -150,6 +150,30 @@ export async function POST(request) {
     if (action === 'mark_for_tpt') {
       const row = await updateResource(userId, id, { status: 'marked_for_tpt' });
       return NextResponse.json({ ok: true, resource: row });
+    }
+
+    // Pre-existing gap fixed 2026-07-19: the Style Lab UI has always had a
+    // "Push to AI Steering" button per-resource that POSTs this action, but
+    // no handler for it existed here -- every click silently returned
+    // "Unknown action: push_to_steering". Copies this resource's content
+    // (the teacher's edited version if they made one, otherwise the raw
+    // extracted text) into steering_documents, where it's live in AI
+    // generation immediately, same as a Style Lab blend push.
+    if (action === 'push_to_steering') {
+      const existing = await getResource(userId, id);
+      if (!existing) return NextResponse.json({ error: 'Resource not found' }, { status: 404 });
+      const text = existing.edited_text || existing.original_text || '';
+      if (!text.trim()) return NextResponse.json({ error: 'No content on this resource to push' }, { status: 400 });
+      const doc = await pushToSteering(userId, {
+        title: existing.title,
+        full_text: text,
+        category: 'actionable_resources',
+        source_type: existing.source_type === 'url' ? 'url' : 'upload',
+        source_url: existing.source_url || null,
+        char_count: text.length,
+      });
+      const row = await updateResource(userId, id, { status: 'pushed_to_steering', pushed_to_steering_doc_id: doc.id });
+      return NextResponse.json({ ok: true, steering_doc_id: doc.id, resource: row });
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
