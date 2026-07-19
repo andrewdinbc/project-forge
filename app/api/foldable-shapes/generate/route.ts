@@ -47,7 +47,11 @@ export async function POST(request: NextRequest) {
     const pdfDataUrl = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
 
     // Rasterize page 1 to PNG for Parts Library / everywhere-else-in-the-app use.
-    const png = await renderPageAsImage(new Uint8Array(pdfBytes), 1, { canvas: () => import('@napi-rs/canvas'), scale: 1.5 });
+    // `as any`: @napi-rs/canvas's exports don't structurally match the `canvas`
+    // package's TS types unpdf expects, even though they're API-compatible at
+    // runtime (this exact pattern is already used unchecked in lib/pdf-layer-render.js,
+    // which is a .js file and skips type-checking -- this route is .ts and doesn't).
+    const png = await renderPageAsImage(new Uint8Array(pdfBytes), 1, { canvas: (() => import('@napi-rs/canvas')) as any, scale: 1.5 });
 
     let part = null;
     if (saveToLibrary) {
