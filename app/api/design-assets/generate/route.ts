@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
+// supabaseAdmin is a lazily-initialized Proxy from a plain .js file (see
+// lib/supabase.js), so TypeScript sees it as `{}` with no properties --
+// this compiled fine in every other .js route that uses it, but breaks
+// strict TS compilation here since this route is .ts. Cast to any at the
+// call site rather than changing the shared client's type broadly.
+const admin: any = supabaseAdmin;
+
 // Generates a design asset (line art / illustration) from a text prompt
 // using either Gemini or Recraft, then stores it in the design-assets
 // bucket and returns a public URL. Built specifically to compare the two
@@ -85,13 +92,13 @@ export async function POST(request: NextRequest) {
     const buffer = provider === 'gemini' ? await generateWithGemini(prompt) : await generateWithRecraft(prompt);
 
     const path = `${userId}/${Date.now()}-${provider}.png`;
-    const { error: uploadError } = await supabaseAdmin.storage.from('design-assets').upload(path, buffer, {
+    const { error: uploadError } = await admin.storage.from('design-assets').upload(path, buffer, {
       contentType: 'image/png',
       upsert: true,
     });
     if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
-    const { data: urlData } = supabaseAdmin.storage.from('design-assets').getPublicUrl(path);
+    const { data: urlData } = admin.storage.from('design-assets').getPublicUrl(path);
     return NextResponse.json({ url: urlData.publicUrl, provider });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
