@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
     if (!userId || !kind || !sourceId || !title) {
       return NextResponse.json({ error: 'userId, kind, sourceId, and title are required' }, { status: 400 });
     }
-    if (kind !== 'component' && kind !== 'resource') {
-      return NextResponse.json({ error: 'kind must be "component" or "resource"' }, { status: 400 });
+    if (kind !== 'component' && kind !== 'resource' && kind !== 'image') {
+      return NextResponse.json({ error: 'kind must be "component", "resource", or "image"' }, { status: 400 });
     }
 
     // Avoid duplicate stars for the same source item.

@@ -18,6 +18,8 @@ export default function ProductDetailPage() {
   const [autoTagging, setAutoTagging] = useState(false);
   const [autoTagResult, setAutoTagResult] = useState<{ taggedCount: number; pageCount: number } | null>(null);
   const [tagVersion, setTagVersion] = useState(0);
+  const [extractingImages, setExtractingImages] = useState(false);
+  const [extractResult, setExtractResult] = useState<{ images: any[]; skipped: any[] } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -88,6 +90,27 @@ export default function ProductDetailPage() {
     }
   }
 
+  async function handleExtractImages() {
+    setExtractingImages(true);
+    setError(null);
+    setExtractResult(null);
+    try {
+      const user = await getCurrentUser();
+      if (!user) { router.push('/auth/login'); return; }
+      const res = await fetch(`/api/products/${productId}/extract-images`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setExtractResult({ images: data.images || [], skipped: data.skipped || [] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Image extraction failed');
+    } finally {
+      setExtractingImages(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -150,6 +173,52 @@ export default function ProductDetailPage() {
                 ✓ Tagged {autoTagResult.taggedCount} component{autoTagResult.taggedCount !== 1 ? 's' : ''} across {autoTagResult.pageCount} pages.
               </p>
             )}
+
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <button onClick={handleExtractImages} disabled={extractingImages} className="btn-primary">
+                {extractingImages ? '🔬 Extracting…' : '🔬 Extract Images'}
+              </button>
+              <p className="text-xs text-slate-500 mt-1">
+                Pulls every embedded image out of this PDF as a standalone file and saves it to your
+                Parts Library, ready to reuse. Covers real embedded photos/clipart (JPEG, and 8-bit
+                RGB/grayscale PNGs); doesn't cover hand-drawn diagrams or vector art built from shapes
+                (that's a cropping tool, coming separately), and skips anything under 40x40px.
+              </p>
+              {extractResult && (
+                <div className="mt-3">
+                  {extractResult.images.length > 0 && (
+                    <>
+                      <p className="text-sm text-green-700 mb-2">
+                        ✓ Extracted {extractResult.images.length} image{extractResult.images.length !== 1 ? 's' : ''} --
+                        saved to your <a href="/dashboard/library-parts" className="underline">Parts Library</a>.
+                      </p>
+                      <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+                        {extractResult.images.map((img: any, i: number) => (
+                          <a key={i} href={img.url} target="_blank" rel="noreferrer" className="block border border-slate-200 rounded overflow-hidden">
+                            <img src={img.url} alt={`Extracted image ${i + 1}`} className="w-full h-16 object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {extractResult.images.length === 0 && extractResult.skipped.length > 0 && (
+                    <p className="text-sm text-amber-600">No images could be extracted from this PDF (see details below).</p>
+                  )}
+                  {extractResult.skipped.length > 0 && (
+                    <details className="mt-2 text-xs text-slate-500">
+                      <summary className="cursor-pointer">
+                        {extractResult.skipped.length} item{extractResult.skipped.length !== 1 ? 's' : ''} skipped -- why?
+                      </summary>
+                      <ul className="list-disc list-inside mt-1">
+                        {extractResult.skipped.map((s: any, i: number) => (
+                          <li key={i}>{s.label}: {s.reason}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

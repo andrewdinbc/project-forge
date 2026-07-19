@@ -47,6 +47,7 @@ export default function LibraryPartsPage() {
 
   const visualComponents = parts.filter((p) => p.kind === 'component');
   const contentPdf = parts.filter((p) => p.kind === 'resource'); // Style Lab resources -- both PDF and URL live here
+  const extractedImages = parts.filter((p) => p.kind === 'image');
 
   function Section({ title, icon, items, emptyHint }) {
     return (
@@ -117,11 +118,44 @@ export default function LibraryPartsPage() {
     <div style={{ maxWidth: 900 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1c3557', marginBottom: 4 }}>📦 Parts Library</h1>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
-        Your favorite individual pieces, saved from Composer (visual/content components) or Style Lab
-        (PDF and URL resources), independent of which product they came from -- so you can find and
-        reuse them when building something new. Star anything with the ⭐ button in Composer or Style Lab
-        to add it here.
+        Your favorite individual pieces, saved from Composer (visual/content components), Style Lab
+        (PDF and URL resources), or extracted directly from a PDF's embedded images -- independent of
+        which product they came from, so you can find and reuse them when building something new.
+        Star anything with the ⭐ button in Composer or Style Lab to add it here, or use "🔬 Extract
+        Images" on a product's page to pull out every embedded image automatically.
       </p>
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1c3557', marginBottom: 10 }}>
+          🖼️ Extracted Images ({extractedImages.length})
+        </h2>
+        {extractedImages.length === 0 ? (
+          <p style={{ fontSize: 13, color: '#999', fontStyle: 'italic' }}>
+            Nothing extracted yet -- go to a product's page and use "🔬 Extract Images" to pull out its embedded images.
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+            {extractedImages.map((p) => (
+              <div key={p.id} style={{ background: '#fff', border: '1px solid #e3ddd0', borderRadius: 8, overflow: 'hidden' }}>
+                <a href={p.file_url} target="_blank" rel="noreferrer">
+                  <img src={p.file_url} alt={p.title} style={{ width: '100%', height: 100, objectFit: 'cover', display: 'block' }} />
+                </a>
+                <div style={{ padding: 6 }}>
+                  <p style={{ fontSize: 10, color: '#555', margin: 0, lineHeight: 1.3 }} title={p.title}>
+                    {p.title.replace(/^.*-- /, '')}
+                  </p>
+                  <button
+                    onClick={() => remove(p.id)}
+                    disabled={busyId === p.id}
+                    style={{ fontSize: 9, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0, marginTop: 2 }}
+                  >
+                    {busyId === p.id ? '…' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <Section
         title="Visual & Content Components"
         icon="🧩"
