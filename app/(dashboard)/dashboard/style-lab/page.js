@@ -152,6 +152,25 @@ export default function StyleLabPage() {
     } catch { /* local state still reflects the change */ }
   }
 
+  // Master toggle for a whole layer: sets every observation in it included/
+  // excluded at once, so deselecting the layer's checkbox drops the entire
+  // layer from the live view on the right (and from blends). Reuses the
+  // per-observation endpoint so no backend change is needed.
+  async function toggleLayer(resourceId, layerKey, items, included) {
+    setResources((prev) => prev.map((x) => {
+      if (x.id !== resourceId) return x
+      const layers = { ...(x.layer_notes || {}) }
+      layers[layerKey] = (layers[layerKey] || []).map((item) => ({ ...item, included }))
+      return { ...x, layer_notes: layers }
+    }))
+    await Promise.all((items || []).map((it) =>
+      fetch('/api/style-lab/resources', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, id: resourceId, action: 'toggle_observation', layerKey, observationId: it.id, included }),
+      }).catch(() => {})
+    ))
+  }
+
   const editSaveTimers = useRef({})
   function editObservationText(resourceId, layerKey, observationId, text) {
     setResources((prev) => prev.map((x) => {
@@ -670,9 +689,19 @@ export default function StyleLabPage() {
                     const expandKey = `${r.id}::${layer.key}`
                     const isExpanded = expandedLayer === expandKey
                     const pref = (r.layer_preferences || {})[layer.key]
+                    const allIncluded = items.length > 0 && items.every((i) => i.included)
+                    const someIncluded = items.some((i) => i.included)
                     return (
                       <div key={layer.key} style={{ fontSize: 11, color: '#2f6b41', background: '#eef6f0', border: `1px solid ${pref === 'like' ? '#4a8a5f' : pref === 'dislike' ? '#c47a7a' : '#b8dcc2'}`, borderRadius: 5, padding: '5px 8px', marginTop: 4 }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={allIncluded}
+                            ref={(el) => { if (el) el.indeterminate = someIncluded && !allIncluded }}
+                            onChange={(e) => toggleLayer(r.id, layer.key, items, e.target.checked)}
+                            title={allIncluded ? 'Whole layer included — deselect to remove it from the live view on the right' : someIncluded ? 'Layer partially included — select to include all of it' : 'Layer removed — select to include the whole layer'}
+                            style={{ marginTop: 2, flexShrink: 0 }}
+                          />
                           <button
                             onClick={() => setExpandedLayer(isExpanded ? null : expandKey)}
                             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', flex: 1 }}
