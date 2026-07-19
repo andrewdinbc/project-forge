@@ -662,7 +662,8 @@ export default function StyleLabPage() {
                 {extractingId === r.id ? 'Extracting…' : r.layer_notes ? '🎨 Re-extract Style Layers' : '🎨 Extract Style Layers'}
               </button>
               {r.layer_notes && (
-                <div style={{ marginTop: 6 }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 6 }}>
+                  <div style={{ flex: '1 1 340px', minWidth: 0 }}>
                   {LAYER_META.map((layer) => {
                     const items = Array.isArray(r.layer_notes[layer.key]) ? r.layer_notes[layer.key] : []
                     if (!items.length) return null
@@ -720,6 +721,43 @@ export default function StyleLabPage() {
                       </div>
                     )
                   })}
+                  </div>
+                  <div style={{ flex: '1 1 260px', minWidth: 0, position: 'sticky', top: 12, alignSelf: 'flex-start' }}>
+                    {(() => {
+                      const layersOut = LAYER_META
+                        .map((layer) => {
+                          const items = (Array.isArray(r.layer_notes[layer.key]) ? r.layer_notes[layer.key] : []).filter((it) => it.included)
+                          return items.length ? { key: layer.key, label: layer.label, items } : null
+                        })
+                        .filter(Boolean)
+                      return (
+                        <div style={{ padding: 10, background: '#f7f5f0', border: '1px dashed #b8dcc2', borderRadius: 6 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#2f6b41', marginBottom: 6 }}>
+                            👁 Live view — the style with your current selections
+                          </div>
+                          {layersOut.length === 0 ? (
+                            <div style={{ fontSize: 11, color: '#999' }}>
+                              Nothing selected — every observation is unchecked, so this resource would contribute no style. Check items on the left to build it back up.
+                            </div>
+                          ) : (
+                            layersOut.map((L) => (
+                              <div key={L.key} style={{ marginBottom: 8 }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: C.navy, marginBottom: 2 }}>{L.label}</div>
+                                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                  {L.items.map((it) => (
+                                    <li key={it.id} style={{ fontSize: 11, color: '#555', marginBottom: 1 }}>{it.text}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))
+                          )}
+                          <div style={{ fontSize: 9, color: '#999', marginTop: 6, borderTop: '1px solid #e6e0d5', paddingTop: 4 }}>
+                            Uncheck an item on the left and it disappears here; uncheck a whole layer and it drops out entirely. This is exactly the included-observation set that feeds a blend / AI Steering.
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
