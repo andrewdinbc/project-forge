@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listResources, createResource, updateResource, getResource, flattenIncludedLayerText } from '@/lib/style-lab';
 import { extractPdfText } from '@/lib/pdf-extract';
+import { supabaseAdmin } from '@/lib/supabase';
 
 // GET  /api/style-lab/resources?userId=...
 // POST /api/style-lab/resources  { userId, action, ... }
@@ -9,6 +10,26 @@ import { extractPdfText } from '@/lib/pdf-extract';
 //         | 'bulk_upload_tpt' (multipart: userId, files[])
 //         | 'toggle_observation' | 'edit_observation' | 'set_layer_preference'
 //           (json: userId, id, layerKey, ...)
+
+// Uploads the original file bytes to the forge-resources bucket (same one
+// lesson-planner's upload routes write to) and returns a public URL.
+// Best-effort -- upload still succeeds text-only if this fails.
+async function uploadOriginalFile(userId, file, buffer) {
+  try {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${userId}/${Date.now()}-${safeName}`;
+    const { error } = await supabaseAdmin.storage.from('forge-resources').upload(path, buffer, {
+      contentType: 'application/pdf',
+      upsert: true,
+    });
+    if (error) throw error;
+    const { data: urlData } = supabaseAdmin.storage.from('forge-resources').getPublicUrl(path);
+    return urlData.publicUrl;
+  } catch (e) {
+    console.error('forge-resources file upload failed:', e.message);
+    return null;
+  }
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -39,10 +60,12 @@ export async function POST(request) {
           try {
             const buffer = Buffer.from(await file.arrayBuffer());
             const extracted = await extractPdfText(buffer);
+            const fileUrl = await uploadOriginalFile(userId, file, buffer);
             const row = await createResource(userId, {
               source_type: 'pdf', origin: 'tpt_purchase',
               title: file.name.replace(/\.pdf$/i, ''),
               original_text: extracted.text.slice(0, 20000),
+              file_url: fileUrl,
             });
             imported.push(row);
           } catch (e) {
@@ -59,10 +82,12 @@ export async function POST(request) {
       if (!file) return NextResponse.json({ error: 'file is required' }, { status: 400 });
       const buffer = Buffer.from(await file.arrayBuffer());
       const extracted = await extractPdfText(buffer);
+      const fileUrl = await uploadOriginalFile(userId, file, buffer);
       const row = await createResource(userId, {
         source_type: 'pdf', origin: 'manual_upload', subject, unit_name: unitName,
         title: file.name.replace(/\.pdf$/i, ''),
         original_text: extracted.text.slice(0, 20000),
+        file_url: fileUrl,
       });
       return NextResponse.json({ resource: row });
     }

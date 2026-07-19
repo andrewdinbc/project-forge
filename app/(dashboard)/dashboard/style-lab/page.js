@@ -601,6 +601,7 @@ export default function StyleLabPage() {
                     )}
                   </div>
                   {r.source_url && <a href={r.source_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#888' }}>{r.source_url}</a>}
+                  {r.file_url && <a href={r.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#2f6b41', marginLeft: r.source_url ? 8 : 0 }}>📄 View original file</a>}
                   {(r.subject || r.unit_name) && (
                     <div style={{ fontSize: 11, color: '#999' }}>{[r.subject, r.unit_name].filter(Boolean).join(' — ')}</div>
                   )}
