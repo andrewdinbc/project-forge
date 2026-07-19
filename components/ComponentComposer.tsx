@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
 
 interface ComponentOption {
@@ -55,6 +55,22 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   const [generatedItems, setGeneratedItems] = useState<GeneratedItem[]>([]);
   const [includedGenerated, setIncludedGenerated] = useState<Record<string, boolean>>({});
   const [expandedGenerated, setExpandedGenerated] = useState<Record<string, boolean>>({});
+
+  // Live preview panel -- re-renders every time a toggle changes, so a
+  // teacher can see exactly what removing a cover page, an extension
+  // activity, etc. actually looks like before committing. Per Aj,
+  // 2026-07-19: "I want to see what that looks like live." Debounced so
+  // rapid toggling doesn't fire a request per click.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewObjectUrlRef = useRef<string | null>(null);
+
+  // Parts Library -- tracks which items have already been starred this
+  // session so the button can show "✓ Saved" instead of "☆ Save".
+  const [savedToLibrary, setSavedToLibrary] = useState<Record<string, boolean>>({});
+  const [savingToLibrary, setSavingToLibrary] = useState<Record<string, boolean>>({});
 
   async function loadComponents() {
     setLoading(true);
@@ -181,7 +197,9 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
     }
   }
 
-  async function handleGenerate() {
+  // Builds the current selections into the same shape both /preview and
+  // /generate expect.
+  function buildSelectionsPayload() {
     const selections: Record<string, string[]> = {};
     for (const group of CATEGORY_GROUPS) {
       for (const cat of group.categories) {
@@ -191,11 +209,89 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
         if (ids.length > 0) selections[cat.key] = ids;
       }
     }
-
     const generatedContent = generatedItems
       .filter((g) => includedGenerated[g.tempId])
       .map((g) => ({ category: g.category, label: g.label, content: g.content }));
+    return { selections, generatedContent };
+  }
 
+  async function refreshPreview() {
+    const { selections, generatedContent } = buildSelectionsPayload();
+    const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0;
+    if (!hasAnySelection) {
+      if (previewObjectUrlRef.current) {
+        window.URL.revokeObjectURL(previewObjectUrlRef.current);
+        previewObjectUrlRef.current = null;
+      }
+      setPreviewUrl(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const res = await fetch('/api/composer/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds, selections, generatedContent }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Preview failed');
+      }
+      const blob = await res.blob();
+      if (previewObjectUrlRef.current) window.URL.revokeObjectURL(previewObjectUrlRef.current);
+      const url = window.URL.createObjectURL(blob);
+      previewObjectUrlRef.current = url;
+      setPreviewUrl(url);
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : 'Failed to build preview');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  // Debounced live preview -- fires ~700ms after the last toggle change,
+  // rather than on every single click, and cleans up its own blob URL.
+  useEffect(() => {
+    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    previewDebounceRef.current = setTimeout(() => { refreshPreview(); }, 700);
+    return () => {
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(included), JSON.stringify(includedGenerated)]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrlRef.current) window.URL.revokeObjectURL(previewObjectUrlRef.current);
+    };
+  }, []);
+
+  // Parts Library -- stars an individual component or generated item for
+  // reuse in future products, independent of which product it came from.
+  async function saveToLibrary(key: string, payload: { kind: 'component' | 'resource'; sourceId: string; sourceProductId?: string; title: string; category?: string }) {
+    setSavingToLibrary((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch('/api/library-parts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, ...payload }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save to library');
+      }
+      setSavedToLibrary((prev) => ({ ...prev, [key]: true }));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to save to library');
+    } finally {
+      setSavingToLibrary((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function handleGenerate() {
+    const { selections, generatedContent } = buildSelectionsPayload();
     const hasAnySelection = Object.values(selections).some((ids) => ids.length > 0) || generatedContent.length > 0;
     if (!hasAnySelection) {
       alert('Select at least one component to include.');
@@ -238,7 +334,8 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
   }
 
   return (
-    <div className="space-y-6">
+    <div className="lg:flex lg:gap-6 lg:items-start">
+    <div className="space-y-6 flex-1 min-w-0">
       <div className="card p-6">
         <label className="block text-xs font-semibold text-slate-700 mb-1">Hybrid Product Title</label>
         <input
@@ -350,21 +447,38 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
                                 pages {item.page_start}–{item.page_end}
                               </p>
                             </div>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={isOn}
-                              onClick={() => toggle(item.id)}
-                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                                isOn ? 'bg-blue-600' : 'bg-slate-300'
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                                  isOn ? 'translate-x-4' : 'translate-x-1'
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                title={savedToLibrary[`component:${item.id}`] ? 'Saved to Parts Library' : 'Save to Parts Library'}
+                                disabled={!!savingToLibrary[`component:${item.id}`]}
+                                onClick={() => saveToLibrary(`component:${item.id}`, {
+                                  kind: 'component',
+                                  sourceId: item.id,
+                                  sourceProductId: item.products?.id,
+                                  title: item.label || cat.label,
+                                  category: cat.key,
+                                })}
+                                className="text-sm leading-none"
+                              >
+                                {savedToLibrary[`component:${item.id}`] ? '⭐' : '☆'}
+                              </button>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isOn}
+                                onClick={() => toggle(item.id)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                                  isOn ? 'bg-blue-600' : 'bg-slate-300'
                                 }`}
-                              />
-                            </button>
+                              >
+                                <span
+                                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                    isOn ? 'translate-x-4' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -451,6 +565,37 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
           </div>
         )}
       </div>
+    </div>
+
+    <div className="lg:w-96 lg:sticky lg:top-6 mt-6 lg:mt-0">
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-slate-800">👁 Live Preview</h3>
+          {previewLoading && <span className="text-[10px] text-blue-600">Updating…</span>}
+        </div>
+        <p className="text-[11px] text-slate-500 mb-2">
+          Updates automatically as you toggle items -- see exactly what removing a cover page,
+          an extension activity, etc. looks like before generating.
+        </p>
+        <div className="border border-slate-200 rounded-lg bg-slate-50" style={{ height: 480 }}>
+          {previewError && (
+            <div className="h-full flex items-center justify-center p-4">
+              <p className="text-xs text-red-600 text-center">{previewError}</p>
+            </div>
+          )}
+          {!previewError && previewUrl && (
+            <iframe src={previewUrl} title="Live preview" className="w-full h-full rounded-lg" />
+          )}
+          {!previewError && !previewUrl && (
+            <div className="h-full flex items-center justify-center p-4">
+              <p className="text-xs text-slate-400 text-center">
+                {previewLoading ? 'Building preview…' : 'Toggle something on to see a live preview here.'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
     </div>
   );
 }

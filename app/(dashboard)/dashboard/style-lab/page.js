@@ -52,6 +52,7 @@ export default function StyleLabPage() {
   const [contentDraft, setContentDraft] = useState({}) // profileId -> {subject, grade, topic, result}
   const [generatingContentId, setGeneratingContentId] = useState(null)
   const [userId, setUserId] = useState(null)
+  const [savedToLibrary, setSavedToLibrary] = useState({}) // resourceId -> true, for Parts Library star button
   const router = useRouter()
 
   useEffect(() => {
@@ -293,6 +294,29 @@ export default function StyleLabPage() {
       setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, edited_text: draftFor(r), status: 'edited' } : x)))
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // Parts Library -- stars this resource for reuse across future
+  // products, independent of which subject/unit it was originally
+  // attached to. Aj, 2026-07-19.
+  async function saveToLibrary(r) {
+    try {
+      const res = await fetch('/api/library-parts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId, kind: 'resource', sourceId: r.id,
+          title: r.title, category: r.source_type,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to save to library')
+      }
+      setSavedToLibrary((prev) => ({ ...prev, [r.id]: true }))
+    } catch (e) {
+      alert(e.message || 'Failed to save to library')
     }
   }
 
@@ -688,6 +712,13 @@ export default function StyleLabPage() {
             />
 
             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => saveToLibrary(r)} disabled={!!savedToLibrary[r.id]}
+                title={savedToLibrary[r.id] ? 'Saved to Parts Library' : 'Save to Parts Library'}
+                style={{ padding: '5px 10px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: savedToLibrary[r.id] ? 'default' : 'pointer' }}
+              >
+                {savedToLibrary[r.id] ? '⭐' : '☆'}
+              </button>
               <button
                 onClick={() => saveEdit(r)} disabled={busyId === r.id}
                 style={{ padding: '5px 12px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11, cursor: 'pointer' }}
