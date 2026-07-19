@@ -139,6 +139,25 @@ async function generateWithRecraft(prompt: string, referenceImageBase64?: string
   return Buffer.from(await imgRes.arrayBuffer());
 }
 
+// Detects the REAL image type from the bytes, so we store and serve the file
+// with the correct content-type/extension regardless of which provider
+// produced it and what it claimed. Durable guard for the 2026-07-19 bug where
+// Recraft's `vector_illustration` style returns an SVG, but the route
+// hardcoded `.png` + `image/png` on upload -- Supabase then served SVG bytes
+// as image/png and the browser rendered a broken image. Magic bytes are the
+// source of truth; never hardcode the stored type from the provider name again.
+function sniffImageType(buffer: Buffer): { contentType: string; ext: string } {
+  const b = buffer;
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return { contentType: 'image/png', ext: 'png' };
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { contentType: 'image/jpeg', ext: 'jpg' };
+  if (b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return { contentType: 'image/webp', ext: 'webp' };
+  if (b.length >= 4 && b.toString('ascii', 0, 4) === 'GIF8') return { contentType: 'image/gif', ext: 'gif' };
+  // SVG is text; tolerate a BOM, leading whitespace, an XML prolog or a comment before <svg
+  const head = b.toString('utf8', 0, Math.min(b.length, 512)).replace(/^\uFEFF/, '').trimStart().toLowerCase();
+  if (head.startsWith('<?xml') || head.startsWith('<svg') || head.includes('<svg')) return { contentType: 'image/svg+xml', ext: 'svg' };
+  return { contentType: 'image/png', ext: 'png' }; // sensible default
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -161,9 +180,12 @@ export async function POST(request: NextRequest) {
         ? await generateWithGemini(prompt, referenceImage)
         : await generateWithRecraft(prompt, referenceImage);
 
-    const path = `${userId}/${Date.now()}-${provider}.png`;
+    // Store with the true type (e.g. Recraft vector output is SVG, not PNG) so
+    // the browser can actually render it — see sniffImageType above.
+    const { contentType, ext } = sniffImageType(buffer);
+    const path = `${userId}/${Date.now()}-${provider}.${ext}`;
     const { error: uploadError } = await admin.storage.from('design-assets').upload(path, buffer, {
-      contentType: 'image/png',
+      contentType,
       upsert: true,
     });
     if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
@@ -172,6 +194,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: urlData.publicUrl, provider });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Provider quota / rate-limit conditions reflect the caller's own account
+    // state, not a server fault — return 429 so they aren't miscounted as 500s
+    // in error dashboards / by the auditor. The client already shows a friendly
+    // "check your plan/billing" explanation for these.
+    const isQuota = /\b429\b/.test(message) || /quota|rate[\s-]?limit/i.test(message);
+    return NextResponse.json({ error: message }, { status: isQuota ? 429 : 500 });
   }
 }
