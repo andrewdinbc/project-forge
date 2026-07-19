@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { COLORS as C, FONT_BODY } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
 import { STYLE_DIALS, defaultDialValues, dialValuesToPromptText } from '@/lib/style-dials'
+import DocumentLayers from '@/components/DocumentLayers'
 
 // Style Lab (moved here from lesson-planner 2026-07-18, per Aj -- this app,
 // project-forge, is the real TPT bundle/publishing platform, so the
@@ -43,6 +44,7 @@ export default function StyleLabPage() {
   const [importResult, setImportResult] = useState(null)
   const [extractingId, setExtractingId] = useState(null)
   const [expandedLayer, setExpandedLayer] = useState(null) // `${resourceId}::${layerKey}`
+  const [visualLayersFor, setVisualLayersFor] = useState(null) // resourceId whose visual-layer view is open
   const [selectedForBlend, setSelectedForBlend] = useState(new Set())
   const [blendName, setBlendName] = useState('')
   const [personalTwist, setPersonalTwist] = useState('')
@@ -790,6 +792,19 @@ export default function StyleLabPage() {
                 </div>
               )}
             </div>
+
+            {r.file_url && (!r.source_type || r.source_type === 'pdf') && (
+              <div style={{ marginBottom: 10, border: '1px solid #e3ddd0', borderRadius: 8, background: '#faf9f5', padding: 10 }}>
+                <button
+                  onClick={() => setVisualLayersFor(visualLayersFor === r.id ? null : r.id)}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: C.navy, textAlign: 'left' }}
+                >
+                  🖼 Visual layers {visualLayersFor === r.id ? '▲' : '▼'}
+                  <span style={{ fontWeight: 400, color: '#888', fontSize: 11 }}> — see the actual page with text / clipart / borders removed</span>
+                </button>
+                {visualLayersFor === r.id && <DocumentLayers userId={userId} resourceId={r.id} />}
+              </div>
+            )}
 
             <textarea
               value={draftFor(r)}
