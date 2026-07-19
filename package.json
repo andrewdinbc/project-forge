@@ -21,7 +21,9 @@
     "pdf-lib": "^1.17.1",
     "@anthropic-ai/sdk": "^0.32.0",
     "pdf-parse": "^1.1.1",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "unpdf": "^0.12.1",
+    "@napi-rs/canvas": "^0.1.53"
   },
   "devDependencies": {
     "tailwindcss": "^3.3.0",

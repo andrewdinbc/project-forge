@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getProduct, updateProduct } from '@/lib/products';
 import { supabase } from '@/lib/supabase';
 import ComponentTagger from '@/components/ComponentTagger';
+import PdfCropTool from '@/components/PdfCropTool';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -20,6 +21,7 @@ export default function ProductDetailPage() {
   const [tagVersion, setTagVersion] = useState(0);
   const [extractingImages, setExtractingImages] = useState(false);
   const [extractResult, setExtractResult] = useState<{ images: any[]; skipped: any[] } | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -29,6 +31,7 @@ export default function ProductDetailPage() {
           router.push('/auth/login');
           return;
         }
+        setUserId(user.id);
         const data = await getProduct(productId, user.id);
         if (!data) {
           setError('Product not found');
@@ -219,6 +222,8 @@ export default function ProductDetailPage() {
                 </div>
               )}
             </div>
+
+            {userId && <PdfCropTool userId={userId} productId={productId} productTitle={product.title} />}
           </div>
         )}
       </div>
