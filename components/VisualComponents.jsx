@@ -27,6 +27,9 @@ export default function VisualComponents({ userId, resourceId }) {
   const [hoverId, setHoverId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(null);
+  const [inpainting, setInpainting] = useState(false);
+  const [inpaintMsg, setInpaintMsg] = useState(null);
+  const [inpaintedUrl, setInpaintedUrl] = useState(null);
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -58,23 +61,58 @@ export default function VisualComponents({ userId, resourceId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysis]);
 
+  // Samples a thin ring of pixels just OUTSIDE a box and returns their average
+  // color, so painting over a removed component blends with whatever's really
+  // there (colored banner background, tinted paper, etc.) instead of assuming
+  // white. Free, instant, client-side -- handles flat/near-flat surroundings
+  // well; genuine textures/gradients still want the AI smart-erase below.
+  // Falls back to white if pixel reads are blocked (CORS-tainted canvas).
+  function sampleEdgeColor(ctx, x, y, w, h, W, H) {
+    try {
+      const pad = 6;
+      const samples = [];
+      const grab = (sx, sy, sw, sh) => {
+        sx = Math.max(0, Math.min(W - 1, Math.round(sx)));
+        sy = Math.max(0, Math.min(H - 1, Math.round(sy)));
+        sw = Math.max(1, Math.min(W - sx, Math.round(sw)));
+        sh = Math.max(1, Math.min(H - sy, Math.round(sh)));
+        const d = ctx.getImageData(sx, sy, sw, sh).data;
+        for (let i = 0; i < d.length; i += 4) samples.push([d[i], d[i + 1], d[i + 2]]);
+      };
+      grab(x, y - pad, w, pad);           // strip above
+      grab(x, y + h, w, pad);             // strip below
+      grab(x - pad, y, pad, h);           // strip left
+      grab(x + w, y, pad, h);             // strip right
+      if (!samples.length) return '#ffffff';
+      const sum = samples.reduce((a, s) => [a[0] + s[0], a[1] + s[1], a[2] + s[2]], [0, 0, 0]);
+      const n = samples.length;
+      const hex = (v) => Math.max(0, Math.min(255, Math.round(v / n))).toString(16).padStart(2, '0');
+      return `#${hex(sum[0])}${hex(sum[1])}${hex(sum[2])}`;
+    } catch {
+      return '#ffffff'; // tainted canvas (CORS) -- degrade gracefully
+    }
+  }
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current; const img = imgRef.current;
     if (!canvas || !img || !analysis) return;
     canvas.width = analysis.width; canvas.height = analysis.height;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, analysis.width, analysis.height);
-    ctx.fillStyle = '#ffffff';
     for (const c of analysis.components) {
       if (!hidden.has(c.id)) continue;
       const b = c.box;
-      ctx.fillRect(b.x * analysis.width, b.y * analysis.height, b.w * analysis.width, b.h * analysis.height);
+      const x = b.x * analysis.width, y = b.y * analysis.height, w = b.w * analysis.width, h = b.h * analysis.height;
+      ctx.fillStyle = sampleEdgeColor(ctx, x, y, w, h, analysis.width, analysis.height);
+      ctx.fillRect(x, y, w, h);
     }
   }, [analysis, hidden]);
 
   useEffect(() => { draw(); }, [draw]);
 
   const toggle = (id) => setHidden((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  useEffect(() => { setInpaintedUrl(null); setInpaintMsg(null); }, [hidden, page]);
+
 
   async function save(payload, label) {
     setSaving(true); setSavedMsg(null);
@@ -102,6 +140,29 @@ export default function VisualComponents({ userId, resourceId }) {
     analysis.palette.forEach((p, i) => { ctx.fillStyle = p.hex; ctx.fillRect(i * sw, 0, sw, h); });
     save({ title: 'Color palette', category: 'palette', dataUrl: c.toDataURL('image/png') }, 'the palette');
   };
+
+  // AI generative fill (Replicate, LaMa inpainting model): reconstructs what's
+  // actually behind the removed component(s) instead of the flat edge-color
+  // guess above -- for banners/borders sitting on a pattern or gradient where
+  // a single average color still looks like an obvious patch. Aj, 2026-07-19:
+  // "recolor everything around it to look as though it wasn't there in the
+  // first place." Needs REPLICATE_API_TOKEN (same one already added for
+  // Generate Matching Set); server route handles the "not set yet" case.
+  async function smartErase() {
+    setInpainting(true); setInpaintMsg(null); setInpaintedUrl(null);
+    try {
+      const hiddenBoxes = analysis.components.filter((c) => hidden.has(c.id)).map((c) => c.box);
+      const res = await fetch('/api/style-lab/inpaint-view', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, resourceId, page, hiddenBoxes }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Smart erase failed');
+      setInpaintedUrl(d.imageUrl);
+      setInpaintMsg('Seamless version saved to Parts Library ✓');
+    } catch (e) { setInpaintMsg(e.message); }
+    finally { setInpainting(false); }
+  }
 
   const grouped = (lvl) => (analysis?.components || []).filter((c) => c.level === lvl);
 
@@ -170,13 +231,29 @@ export default function VisualComponents({ userId, resourceId }) {
               style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#2f6b41', border: 'none', borderRadius: 5, padding: '4px 10px', cursor: saving ? 'default' : 'pointer' }}>
               {saving ? 'Saving…' : '⭐ Save kept view'}
             </button>
+            {hidden.size > 0 && (
+              <button onClick={smartErase} disabled={inpainting} title="Uses AI to fill removed areas so they blend in, instead of a flat color patch"
+                style={{ fontSize: 11, fontWeight: 600, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 5, padding: '4px 10px', cursor: inpainting ? 'default' : 'pointer' }}>
+                {inpainting ? 'Blending…' : '🪄 Smart erase (AI)'}
+              </button>
+            )}
             {savedMsg && <span style={{ fontSize: 11, color: savedMsg.startsWith('Saved') ? '#2f6b41' : '#a33' }}>{savedMsg}</span>}
+          </div>
+        )}
+        {inpaintMsg && (
+          <p style={{ fontSize: 11, color: inpaintMsg.startsWith('Seamless') ? '#2f6b41' : '#a33', marginTop: 4 }}>{inpaintMsg}</p>
+        )}
+        {inpaintedUrl && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#1c3557', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>Seamless result</div>
+            <img src={inpaintedUrl} alt="AI-blended removal" style={{ width: '100%', borderRadius: 6, border: '1px solid #d9b8e8' }} />
           </div>
         )}
 
         <div style={{ fontSize: 9, color: '#aaa', marginTop: 8, lineHeight: 1.4 }}>
-          Removal is by each component's box for now, so on dense overlapping art it can clip a neighbour.
-          Exact-shape cut-outs turn on once a Replicate token is added.
+          The live preview on the right uses a quick edge-color guess to fill removed areas, which
+          looks right on flat or near-flat backgrounds. For a patterned or gradient background,
+          "🪄 Smart erase" sends it to an AI inpainting model to reconstruct it properly.
         </div>
       </div>
 
