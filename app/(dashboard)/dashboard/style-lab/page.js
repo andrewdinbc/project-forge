@@ -44,6 +44,7 @@ export default function StyleLabPage() {
   const [busyId, setBusyId] = useState(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
+  const [importProgress, setImportProgress] = useState(null)
   const [extractingId, setExtractingId] = useState(null)
   const [expandedLayer, setExpandedLayer] = useState(null) // `${resourceId}::${layerKey}`
   const [visualLayersFor, setVisualLayersFor] = useState(null) // resourceId whose visual-layer view is open
@@ -353,24 +354,104 @@ export default function StyleLabPage() {
       .finally(() => setLoading(false))
   }, [userId])
 
+  // Vercel's serverless functions reject request bodies over ~4.5MB with a
+  // hard 413 BEFORE the route's own code ever runs -- confirmed live,
+  // 2026-07-19, on 3 real files (8-10MB each) that never reached the server
+  // at all. Server-side splitting can't fix this (the file is already
+  // rejected by the platform by the time any of our code would run), so
+  // this has to happen client-side, before the request is ever sent.
+  const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024 // safety margin under the ~4.5MB platform cap
+
+  async function buildChunkBytes(srcDoc, pageIndices, PDFDocument) {
+    const chunkDoc = await PDFDocument.create()
+    const copied = await chunkDoc.copyPages(srcDoc, pageIndices)
+    copied.forEach((p) => chunkDoc.addPage(p))
+    return chunkDoc.save()
+  }
+
+  // Splits one oversized PDF into page-range chunks that are each
+  // guaranteed under maxBytes -- recursive binary split rather than a
+  // naive equal-pages split, since page byte sizes in a real INB (some
+  // pages are a title graphic, others are plain text) vary too much for a
+  // simple average to reliably land every chunk under the limit.
+  async function splitPdfBySize(file, maxBytes) {
+    const { PDFDocument } = await import('pdf-lib')
+    if (file.size <= maxBytes) return [{ blob: file, name: file.name }]
+
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const srcDoc = await PDFDocument.load(bytes)
+    const pageCount = srcDoc.getPageCount()
+    const rawChunks = []
+
+    async function splitRange(start, end) {
+      const indices = []
+      for (let i = start; i <= end; i++) indices.push(i)
+      const chunkBytes = await buildChunkBytes(srcDoc, indices, PDFDocument)
+      if (chunkBytes.length <= maxBytes || indices.length === 1) {
+        rawChunks.push({ bytes: chunkBytes, startPage: start + 1, endPage: end + 1 })
+        return
+      }
+      const mid = start + Math.floor((end - start) / 2)
+      await splitRange(start, mid)
+      await splitRange(mid + 1, end)
+    }
+    await splitRange(0, pageCount - 1)
+
+    const baseName = file.name.replace(/\.pdf$/i, '')
+    return rawChunks.map((c, i) => ({
+      blob: new Blob([c.bytes], { type: 'application/pdf' }),
+      name: `${baseName} (Part ${i + 1} of ${rawChunks.length}, pages ${c.startPage}-${c.endPage}).pdf`,
+    }))
+  }
+
   async function bulkImportTpt(fileList) {
     const files = Array.from(fileList || [])
     if (!files.length) return
     setImporting(true)
     setImportResult(null)
+    const imported = []
+    const errors = []
     try {
-      const formData = new FormData()
-      formData.append('userId', userId)
-      formData.append('action', 'bulk_upload_tpt')
-      files.forEach((f) => formData.append('files', f))
-      const res = await fetch('/api/style-lab/resources', { method: 'POST', body: formData })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setResources((prev) => [...(data.imported || []), ...prev])
-      setImportResult({ count: data.imported.length, errors: data.errors })
+      // Split any oversized file up front, flatten into one list of units
+      // so a batch of e.g. 5 selected files (one of which splits into 4
+      // pieces) becomes 8 upload units total.
+      setImportProgress('Checking file sizes…')
+      const units = []
+      for (const f of files) {
+        if (f.size > MAX_UPLOAD_BYTES) {
+          const chunks = await splitPdfBySize(f, MAX_UPLOAD_BYTES)
+          units.push(...chunks)
+        } else {
+          units.push({ blob: f, name: f.name })
+        }
+      }
+
+      // Upload one unit per request, sequentially -- safest against both
+      // per-file AND combined-batch size surprises, and lets progress be
+      // shown honestly rather than one opaque wait.
+      for (let i = 0; i < units.length; i++) {
+        const unit = units[i]
+        setImportProgress(`Uploading ${i + 1} of ${units.length}: ${unit.name}`)
+        const formData = new FormData()
+        formData.append('userId', userId)
+        formData.append('action', 'bulk_upload_tpt')
+        formData.append('files', unit.blob, unit.name)
+        try {
+          const res = await fetch('/api/style-lab/resources', { method: 'POST', body: formData })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+          imported.push(...(data.imported || []))
+          errors.push(...(data.errors || []))
+        } catch (e) {
+          errors.push({ filename: unit.name, error: e.message })
+        }
+      }
+      setResources((prev) => [...imported, ...prev])
+      setImportResult({ count: imported.length, errors })
     } catch (e) {
-      setImportResult({ count: 0, errors: [{ error: e.message }] })
+      setImportResult({ count: imported.length, errors: [...errors, { error: e.message }] })
     } finally {
+      setImportProgress(null)
       setImporting(false)
     }
   }
@@ -496,7 +577,10 @@ export default function StyleLabPage() {
       <div style={{ background: '#fff', border: '1px solid #d9b8e8', borderRadius: 8, padding: 14, marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#7a3c8a', marginBottom: 4 }}>📚 Import Your TPT Purchases</div>
         <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-          Upload PDFs of resources you've already bought on TPT -- they'll land here to edit/remix and push into AI Steering, so generation can draw on material you already own. PDF only for now.
+          Upload PDFs of resources you've already bought on TPT -- they'll land here for reference and
+          inspiration (Visual layers, Schema Lab, Composer). PDF only for now. Files over ~3.5MB are
+          automatically split into page-range parts before upload, so large notebooks don't hit the
+          server's request-size limit -- you'll see each part land as its own resource.
         </p>
         <label style={{ display: 'inline-block', padding: '6px 14px', background: '#7a3c8a', color: '#fff', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
           {importing ? 'Importing…' : '📎 Choose PDF(s) to Import'}
@@ -506,6 +590,9 @@ export default function StyleLabPage() {
             onChange={(e) => bulkImportTpt(e.target.files)}
           />
         </label>
+        {importing && importProgress && (
+          <p style={{ fontSize: 11, color: '#7a3c8a', marginTop: 6 }}>{importProgress}</p>
+        )}
         {importResult && (
           <div style={{ marginTop: 8, fontSize: 11 }}>
             {importResult.count > 0 && <span style={{ color: '#1a7a3e' }}>✓ Imported {importResult.count} file{importResult.count > 1 ? 's' : ''}.</span>}
