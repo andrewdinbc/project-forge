@@ -40,17 +40,20 @@ function AssetModifierInner() {
   const initialAssetUrl = searchParams.get('assetUrl') || '';
   const initialTitle = searchParams.get('title') || 'Modified asset';
   const sourcePartId = searchParams.get('sourcePartId') || null;
+  const initialTool = searchParams.get('tool') || 'select';
+  const initialFontFamily = searchParams.get('fontFamily') || '';
 
   const [userId, setUserId] = useState(null);
   const canvasElRef = useRef(null);
   const fCanvasRef = useRef(null);
   const fabricRef = useRef(null); // dynamically-imported fabric module
-  const toolRef = useRef('select');
+  const toolRef = useRef(initialTool);
   const drawStateRef = useRef(null); // in-progress shape being drag-created
   const historyRef = useRef({ stack: [], index: -1, suppress: false });
+  const loadedFontsRef = useRef(new Set()); // font family names already injected
 
   const [ready, setReady] = useState(false);
-  const [tool, setTool] = useState('select');
+  const [tool, setTool] = useState(initialTool);
   const [selected, setSelected] = useState(null); // lightweight props snapshot
   const [fillColor, setFillColor] = useState('#2f6b41');
   const [useGradient, setUseGradient] = useState(false);
@@ -68,6 +71,41 @@ function AssetModifierInner() {
   const [aiMsg, setAiMsg] = useState(null);
   const [cropping, setCropping] = useState(false);
 
+  // Font Studio (Aj, 2026-07-19): "make something similar for font... Push
+  // to Font Modifier." Rather than a separate app, this is the SAME editor
+  // with a font-family picker layered on -- loads any Google Font (properly
+  // licensed for commercial use, unlike the original TPT fonts we only ever
+  // name/reference) and applies it to the Text tool. Draw + AI-refine (the
+  // other half of the ask) already works as-is via Freehand + the AI box
+  // below; the quick-suggestion buttons make that path obvious.
+  const [fontFamily, setFontFamily] = useState(initialFontFamily);
+  const [fontInput, setFontInput] = useState(initialFontFamily);
+  const [fontLoading, setFontLoading] = useState(false);
+
+  const loadGoogleFont = useCallback(async (name) => {
+    const clean = String(name || '').trim();
+    if (!clean) return;
+    if (!loadedFontsRef.current.has(clean)) {
+      setFontLoading(true);
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(clean).replace(/%20/g, '+')}&display=swap`;
+      document.head.appendChild(link);
+      try {
+        await document.fonts.load(`16px "${clean}"`);
+        await document.fonts.ready;
+      } catch { /* font may not exist on Google Fonts -- falls back to default, not fatal */ }
+      loadedFontsRef.current.add(clean);
+      setFontLoading(false);
+    }
+    setFontFamily(clean);
+  }, []);
+
+  useEffect(() => {
+    if (initialFontFamily) loadGoogleFont(initialFontFamily);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     getCurrentUser()
       .then((user) => { if (!user) { router.push('/auth/login'); return; } setUserId(user.id); })
@@ -75,6 +113,20 @@ function AssetModifierInner() {
   }, [router]);
 
   useEffect(() => { toolRef.current = tool; }, [tool]);
+
+  // These stay in sync so the mouse-event handlers registered once at
+  // canvas-init time (see the [] effect below) always see the CURRENT
+  // picker values, not whatever was set at mount -- same reason toolRef
+  // exists. Caught this while wiring in font support; worth fixing now
+  // rather than shipping "new shapes ignore the color you just picked."
+  const fillColorRef = useRef(fillColor);
+  const strokeColorRef = useRef(strokeColor);
+  const strokeWidthRef = useRef(strokeWidth);
+  const fontFamilyRef = useRef(fontFamily);
+  useEffect(() => { fillColorRef.current = fillColor; }, [fillColor]);
+  useEffect(() => { strokeColorRef.current = strokeColor; }, [strokeColor]);
+  useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
+  useEffect(() => { fontFamilyRef.current = fontFamily; }, [fontFamily]);
 
   // ---------- History (undo/redo) ----------
   const pushHistory = useCallback(() => {
@@ -145,6 +197,7 @@ function AssetModifierInner() {
         setStrokeWidth(obj.strokeWidth || 0);
         setOpacity(obj.opacity == null ? 1 : obj.opacity);
         setShadow(!!obj.shadow);
+        if (obj.type === 'textbox' && obj.fontFamily) setFontFamily(obj.fontFamily);
       };
       canvas.on('selection:created', updateSelectionState);
       canvas.on('selection:updated', updateSelectionState);
@@ -157,11 +210,12 @@ function AssetModifierInner() {
         const t = toolRef.current;
         if (!['rect', 'ellipse', 'line'].includes(t)) return;
         const p = opt.scenePoint;
+        const fc = fillColorRef.current, sc = strokeColorRef.current, sw = strokeWidthRef.current;
         const { Rect, Ellipse, Line } = fabricRef.current;
         let obj;
-        if (t === 'rect') obj = new Rect({ left: p.x, top: p.y, width: 1, height: 1, fill: fillColor, stroke: strokeColor, strokeWidth });
-        else if (t === 'ellipse') obj = new Ellipse({ left: p.x, top: p.y, rx: 1, ry: 1, fill: fillColor, stroke: strokeColor, strokeWidth });
-        else obj = new Line([p.x, p.y, p.x, p.y], { stroke: strokeColor || '#000000', strokeWidth: strokeWidth || 2 });
+        if (t === 'rect') obj = new Rect({ left: p.x, top: p.y, width: 1, height: 1, fill: fc, stroke: sc, strokeWidth: sw });
+        else if (t === 'ellipse') obj = new Ellipse({ left: p.x, top: p.y, rx: 1, ry: 1, fill: fc, stroke: sc, strokeWidth: sw });
+        else obj = new Line([p.x, p.y, p.x, p.y], { stroke: sc || '#000000', strokeWidth: sw || 2 });
         canvas.add(obj);
         drawStateRef.current = { obj, startX: p.x, startY: p.y, kind: t };
         canvas.requestRenderAll();
@@ -193,7 +247,11 @@ function AssetModifierInner() {
         if (toolRef.current !== 'text') return;
         const { Textbox } = fabricRef.current;
         const p = opt.scenePoint;
-        const t = new Textbox('Edit me', { left: p.x, top: p.y, width: 200, fontSize: 24, fill: fillColor });
+        const t = new Textbox('Edit me', {
+          left: p.x, top: p.y, width: 200, fontSize: 24,
+          fill: fillColorRef.current,
+          fontFamily: fontFamilyRef.current || undefined,
+        });
         canvas.add(t);
         canvas.setActiveObject(t);
         t.enterEditing();
@@ -282,6 +340,18 @@ function AssetModifierInner() {
     const { Shadow } = fabricRef.current;
     obj.set('shadow', on ? new Shadow({ color: 'rgba(0,0,0,0.4)', blur: 10, offsetX: 6, offsetY: 6 }) : null);
     fCanvasRef.current.requestRenderAll(); pushHistory();
+  };
+
+  // Applies a Google Font to the selected text object, loading it first if
+  // it hasn't been used yet this session.
+  const applyFontFamily = async (name) => {
+    await loadGoogleFont(name);
+    const canvas = fCanvasRef.current; const obj = canvas?.getActiveObject();
+    if (obj && obj.type === 'textbox') {
+      obj.set('fontFamily', name);
+      canvas.requestRenderAll();
+      pushHistory();
+    }
   };
 
   const layerOrder = (dir) => {
@@ -473,6 +543,18 @@ function AssetModifierInner() {
             <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
               Describe a change and it'll apply it to the whole canvas as-is (AI edit, not a precision tool -- for fine control use the tools on the left).
             </p>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+              {[
+                'Clean up and refine this sketch into a polished illustration',
+                'Turn this into a bold, hand-lettered word art style',
+                'Make it look playful and bouncy, kid-friendly classroom style',
+              ].map((s, i) => (
+                <button key={i} onClick={() => setAiInstruction(s)}
+                  style={{ fontSize: 10, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 12, padding: '3px 10px', cursor: 'pointer' }}>
+                  {s.length > 30 ? s.slice(0, 28) + '…' : s}
+                </button>
+              ))}
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
                 type="text" value={aiInstruction} onChange={(e) => setAiInstruction(e.target.value)}
@@ -492,6 +574,33 @@ function AssetModifierInner() {
 
         {/* RIGHT: properties */}
         <div style={{ flex: '0 0 200px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 4 }}>🔤 Font (Google Fonts)</div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+            <input
+              type="text" value={fontInput} onChange={(e) => setFontInput(e.target.value)}
+              placeholder="e.g. Fredoka"
+              onKeyDown={(e) => { if (e.key === 'Enter') applyFontFamily(fontInput); }}
+              style={{ flex: 1, fontSize: 11, padding: '5px 6px', border: '1px solid #e3ddd0', borderRadius: 4 }}
+            />
+            <button onClick={() => applyFontFamily(fontInput)} disabled={fontLoading || !fontInput.trim()}
+              style={{ fontSize: 10, color: '#fff', background: '#2f6b41', border: 'none', borderRadius: 4, padding: '0 8px', cursor: 'pointer' }}>
+              {fontLoading ? '…' : 'Load'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 4 }}>
+            {['Fredoka', 'Patrick Hand', 'Luckiest Guy', 'Short Stack', 'Bungee'].map((f) => (
+              <button key={f} onClick={() => { setFontInput(f); applyFontFamily(f); }}
+                style={{ fontSize: 9, color: '#333', background: '#f0ece3', border: 'none', borderRadius: 10, padding: '2px 8px', cursor: 'pointer' }}>
+                {f}
+              </button>
+            ))}
+          </div>
+          {fontFamily && <p style={{ fontSize: 10, color: '#2f6b41', margin: '0 0 4px' }}>Active: {fontFamily}</p>}
+          <p style={{ fontSize: 9, color: '#aaa', marginBottom: 10, lineHeight: 1.4 }}>
+            Pick a font, then use the 🔤 Text tool -- new text uses this font. Free Google Fonts only
+            (properly licensed for commercial use), same reasoning as the Style Lab font finder.
+          </p>
+
           <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 4 }}>Fill</div>
           <input type="color" value={fillColor} onChange={(e) => { setFillColor(e.target.value); applyFill(e.target.value, useGradient, gradientColor2); }} style={{ width: '100%', height: 30, marginBottom: 4, cursor: 'pointer' }} />
           <label style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>

@@ -302,6 +302,16 @@ export default function VisualComponents({ userId, resourceId }) {
                           <a href={buyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: '#2f6b41', textDecoration: 'underline' }}>
                             💳 Buy this font
                           </a>
+                          <a
+                            href={`/dashboard/asset-modifier?${new URLSearchParams({
+                              tool: 'text',
+                              title: `${f} lettering`,
+                              ...(search?.data?.alternatives?.[0]?.name ? { fontFamily: search.data.alternatives[0].name } : {}),
+                            }).toString()}`}
+                            style={{ fontSize: 9, color: '#1c3557', textDecoration: 'underline' }}
+                          >
+                            🔤 Push to Font Modifier
+                          </a>
                         </>
                       )}
                     </div>

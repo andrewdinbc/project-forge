@@ -146,7 +146,17 @@ export default function LibraryPartsPage() {
 
   return (
     <div style={{ maxWidth: 900 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1c3557', marginBottom: 4 }}>📦 Parts Library</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1c3557', margin: 0 }}>📦 Parts Library</h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a href="/dashboard/asset-modifier" style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
+            🎨 Asset Modifier
+          </a>
+          <a href={`/dashboard/asset-modifier?${new URLSearchParams({ tool: 'text', title: 'Lettering' }).toString()}`} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#1c3557', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
+            🔤 Font Modifier
+          </a>
+        </div>
+      </div>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
         Your favorite individual pieces, saved from Composer (visual/content components), Style Lab
         (PDF and URL resources), or extracted directly from a PDF's embedded images -- independent of
