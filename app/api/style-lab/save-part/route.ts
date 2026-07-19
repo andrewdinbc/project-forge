@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const pdfBytes = Buffer.from(await pdfRes.arrayBuffer());
 
     const layers = { text: text !== false, images: images !== false };
-    let buffer = await renderPageWithLayers(pdfBytes, page, layers, scale);
+    let buffer: any = await renderPageWithLayers(pdfBytes, page, layers, scale);
 
     if (crop && crop.width >= 10 && crop.height >= 10) {
       buffer = await cropPngRegion(
