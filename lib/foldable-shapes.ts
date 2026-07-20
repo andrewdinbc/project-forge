@@ -130,6 +130,26 @@ export const FOLDABLE_SHAPES = [
     defaultCount: 6,
     matchKeywords: ['recording sheet', 'response sheet', 'answer sheet', 'numbered blank', 'student response'],
   },
+  {
+    key: 'game-board-track',
+    name: 'Game Board Track',
+    description: 'N numbered spaces laid out as a continuous snake path across the page, the shared play surface for a print-and-play board game where players move a marker space by space. Confirmed against 7 cross-mechanic game shells (Zoom, Monster Mix-up, Bingo Showdown, Spin 4/2, Spin-N-Bump, Roll-N-Bump) that all share this same underlying board despite very different win conditions.',
+    mechanic: 'print-and-cut',
+    minCount: 12,
+    maxCount: 30,
+    defaultCount: 24,
+    matchKeywords: ['game board', 'board game', 'play surface', 'numbered spaces', 'path', 'track'],
+  },
+  {
+    key: 'spinner',
+    name: 'Spinner',
+    description: 'A circle divided into N equal labeled wedges around a center hole, assembled with a pencil and paperclip into the classic low-cost randomizer used instead of printed dice.',
+    mechanic: 'assemble-and-glue',
+    minCount: 4,
+    maxCount: 8,
+    defaultCount: 6,
+    matchKeywords: ['spinner', 'randomization device', 'paperclip', 'spin the'],
+  },
 ];
 
 const BLACK = rgb(0, 0, 0);
@@ -737,4 +757,96 @@ export function drawRecordingSheet(page: any, opts: {
   }
 
   page.drawText('Answer each numbered task card in the matching space above. This sheet is reusable across students -- the cards never get written on.', { x, y: y - 14, size: 8, font, color: GRAY });
+}
+
+// Game Board Track: N numbered spaces arranged in a boustrophedon ("snake")
+// path -- alternating left-to-right / right-to-left rows -- so the printed
+// board reads as one continuous path players move a marker along, same as
+// a real board game track, without needing a single giant spiral (which
+// doesn't tile cleanly onto a rectangular page).
+export function drawGameBoardTrack(page: any, opts: {
+  x: number; y: number; width: number; height: number;
+  count: number; labels: string[]; contents: string[];
+  font: any; boldFont: any;
+}) {
+  const { x, y, width, height, count, labels, boldFont, font } = opts;
+  const cols = 6;
+  const rows = Math.ceil(count / cols);
+  const cellW = width / cols;
+  const cellH = height / rows;
+
+  const positions: { x: number; y: number; col: number; row: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / cols);
+    const posInRow = i % cols;
+    const col = row % 2 === 0 ? posInRow : cols - 1 - posInRow; // snake direction
+    positions.push({ x: x + col * cellW, y: y + height - (row + 1) * cellH, col, row });
+  }
+
+  for (let i = 0; i < count; i++) {
+    const p = positions[i];
+    page.drawRectangle({ x: p.x, y: p.y, width: cellW, height: cellH, borderColor: BLACK, borderWidth: 1.2 });
+    const num = String(i + 1);
+    page.drawText(num, { x: p.x + 4, y: p.y + cellH - 12, size: 9, font: boldFont, color: BLACK });
+    const label = labels[i] || '';
+    if (label) {
+      const { lines, size } = fitText(label, font, [7, 6], cellW - 8, 3);
+      let ty = p.y + cellH / 2;
+      for (const line of lines) {
+        const tw = font.widthOfTextAtSize(line, size);
+        page.drawText(line, { x: p.x + cellW / 2 - tw / 2, y: ty, size, font, color: BLACK });
+        ty -= size + 1;
+      }
+    }
+  }
+
+  // Path arrows between consecutive spaces (skip the wrap between rows'
+  // last/first cell, which the snake layout already makes visually obvious)
+  for (let i = 0; i < count - 1; i++) {
+    const a = positions[i], b = positions[i + 1];
+    if (a.row !== b.row) continue;
+    const dir = b.col > a.col ? 1 : -1;
+    const ay = a.y + cellH / 2;
+    page.drawLine({ start: { x: a.x + (dir > 0 ? cellW - 4 : 4), y: ay }, end: { x: a.x + (dir > 0 ? cellW + 4 : -4), y: ay }, thickness: 1.5, color: GRAY });
+  }
+
+  page.drawText('Players move a marker from space 1 to the final space, following the numbered path shown.', { x, y: y - 14, size: 8, font, color: GRAY });
+}
+
+// Spinner: a circle divided into N equal labeled wedges, with a small
+// center hole marked for the classic pencil-tip-through-a-paperclip
+// spinner mechanism -- the standard low-cost randomizer these game shells
+// use instead of printed dice.
+export function drawSpinner(page: any, opts: {
+  x: number; y: number; width: number; height: number;
+  count: number; labels: string[]; contents: string[];
+  font: any; boldFont: any;
+}) {
+  const { x, y, width, height, count, labels, font, boldFont } = opts;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const r = Math.min(width, height) / 2 - 10;
+  const start = -Math.PI / 2;
+
+  page.drawEllipse({ x: cx, y: cy, xScale: r, yScale: r, borderColor: BLACK, borderWidth: 1.5 });
+  for (let i = 0; i < count; i++) {
+    const a = start + i * ((2 * Math.PI) / count);
+    page.drawLine({ start: { x: cx, y: cy }, end: { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }, thickness: 1, color: BLACK });
+
+    const midA = a + Math.PI / count;
+    const labelR = r * 0.6;
+    const lx = cx + labelR * Math.cos(midA);
+    const ly = cy + labelR * Math.sin(midA);
+    const label = labels[i] || String(i + 1);
+    const { lines, size } = fitText(label, boldFont, [9, 8, 7], r * 0.7, 2);
+    let ty = ly + ((lines.length - 1) * (size + 1)) / 2;
+    for (const line of lines) {
+      const tw = boldFont.widthOfTextAtSize(line, size);
+      page.drawText(line, { x: lx - tw / 2, y: ty, size, font: boldFont, color: BLACK });
+      ty -= size + 1;
+    }
+  }
+  page.drawEllipse({ x: cx, y: cy, xScale: 2.5, yScale: 2.5, borderColor: BLACK, color: BLACK });
+
+  page.drawText('Cut out the spinner. Push a pencil tip through a paperclip and hold it at the center dot; flick the paperclip to spin.', { x, y: y - 14, size: 8, font, color: GRAY });
 }
