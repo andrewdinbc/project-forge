@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, PAGE_W, PAGE_H, INK, NAVY, GRAY } from '@/lib/worksheet-pdf';
+import { SHAPES, collectPoints } from '@/lib/dot-shapes';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -9,90 +10,13 @@ import { errorMessage } from '@/lib/error-message';
 // STW "Mystery Graph Pictures" format. Real hand-authored coordinate
 // shapes (not AI-generated, not a stock image) -- each one is a genuine
 // ordered list of (x, y) points in a normalized -10..10 space that
-// connects into a recognizable picture. 'quadrant1' mode (all positive
+// connects into a recognizable picture (lib/dot-shapes.js, shared with
+// the Dot-to-Dots generator). 'quadrant1' mode (all positive
 // coordinates, 0-20) is for younger grades; 'all4' mode (full plane,
 // -10..10) also teaches negative-coordinate plotting.
 export const maxDuration = 30;
 
 const admin: any = supabaseAdmin;
-
-// Each shape: an ordered array of line "strokes". A stroke is an array of
-// [x, y] points connected in sequence; a picture can have multiple
-// disconnected strokes (pen up, move, pen down again) -- e.g. a boat's
-// hull and sail are drawn as two separate strokes. Coordinates are in a
-// normalized -10..10 box; quadrant1 mode shifts everything to 0..20.
-const SHAPES: Record<string, { label: string; strokes: [number, number][][] }> = {
-  house: {
-    label: 'House',
-    strokes: [
-      [[-6, -6], [-6, 2], [0, 8], [6, 2], [6, -6], [-6, -6]],
-      [[-2, -6], [-2, -1], [2, -1], [2, -6]],
-    ],
-  },
-  sailboat: {
-    label: 'Sailboat',
-    strokes: [
-      [[-8, -4], [8, -4], [5, -7], [-5, -7], [-8, -4]],
-      [[0, -4], [0, 7]],
-      [[0, 6], [-5, -3], [0, -3]],
-      [[0, 6], [4, 1], [0, 1]],
-    ],
-  },
-  arrow: {
-    label: 'Arrow',
-    strokes: [
-      [[-8, 0], [5, 0]],
-      [[5, 0], [1, 4]],
-      [[5, 0], [1, -4]],
-    ],
-  },
-  heart: {
-    label: 'Heart',
-    strokes: [
-      [[0, -8], [-8, 1], [-8, 5], [-4, 8], [0, 4], [4, 8], [8, 5], [8, 1], [0, -8]],
-    ],
-  },
-  star: {
-    label: 'Star',
-    strokes: [
-      [[0, 9], [2, 2], [9, 2], [3, -2], [5, -9], [0, -4], [-5, -9], [-3, -2], [-9, 2], [-2, 2], [0, 9]],
-    ],
-  },
-  tree: {
-    label: 'Tree',
-    strokes: [
-      [[-1, -9], [-1, -3], [1, -3], [1, -9]],
-      [[0, -3], [-6, 1], [-3, 1], [-7, 5], [-4, 5], [0, 9], [4, 5], [7, 5], [3, 1], [6, 1], [0, -3]],
-    ],
-  },
-  fish: {
-    label: 'Fish',
-    strokes: [
-      [[-8, 0], [-2, 5], [6, 3], [8, 0], [6, -3], [-2, -5], [-8, 0]],
-      [[6, 3], [10, 6], [6, 0], [10, -6], [6, -3]],
-      [[-4, 1], [-3, 2]],
-    ],
-  },
-  kite: {
-    label: 'Kite',
-    strokes: [
-      [[0, 9], [5, 2], [0, -9], [-5, 2], [0, 9]],
-      [[0, -9], [1, -10], [-1, -12], [1, -14], [-1, -16]],
-    ],
-  },
-};
-
-function collectPoints(strokes: [number, number][][]): [number, number][] {
-  const seen = new Set<string>();
-  const out: [number, number][] = [];
-  for (const stroke of strokes) {
-    for (const [x, y] of stroke) {
-      const key = `${x},${y}`;
-      if (!seen.has(key)) { seen.add(key); out.push([x, y]); }
-    }
-  }
-  return out;
-}
 
 export async function POST(request: NextRequest) {
   try {
