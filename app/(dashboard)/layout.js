@@ -12,10 +12,11 @@ import { getCurrentUser, signOut } from '@/lib/auth';
 // here; a genuinely new suite = one new group entry.
 const NAV = [
   { type: 'link', href: '/dashboard', label: '📊 Dashboard' },
+  { type: 'link', href: '/dashboard/uploads', label: '📤 Uploads' },
   {
-    type: 'suite', key: 'products', label: '📁 Products',
+    type: 'suite', key: 'products', label: '📁 Finished Products',
     items: [
-      { href: '/dashboard/products', label: '📁 All Products' },
+      { href: '/dashboard/products', label: '📁 Finished Products' },
       { href: '/dashboard/bundles', label: '📦 Bundles' },
       { href: '/dashboard/composer', label: '🧬 Composer' },
     ],

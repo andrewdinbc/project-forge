@@ -43,7 +43,7 @@ export default function ProductsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Products</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Finished Products</h1>
           <p className="text-slate-600 mt-1">Manage your TPT resources</p>
         </div>
         <Link href="/dashboard/products/new" className="btn-primary">
@@ -108,7 +108,7 @@ export default function ProductsPage() {
       ) : (
         <div className="card p-12 text-center">
           <p className="text-4xl mb-4">📁</p>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">No Products Yet</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">No Finished Products Yet</h2>
           <p className="text-slate-600 mb-6">Create your first product to get started.</p>
           <Link href="/dashboard/products/new" className="btn-primary inline-block">
             Create Product

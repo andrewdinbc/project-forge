@@ -53,11 +53,28 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const userId = form.get('userId') as string;
-    const file = form.get('file') as unknown as File;
-    if (!userId || !file) return NextResponse.json({ error: 'userId and file are required' }, { status: 400 });
+    const file = form.get('file') as unknown as File | null;
+    const fileUrl = form.get('fileUrl') as string | null;
+    const titleField = form.get('title') as string | null;
+    if (!userId || (!file && !fileUrl)) {
+      return NextResponse.json({ error: 'userId and either file or fileUrl are required' }, { status: 400 });
+    }
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const baseTitle = (file.name || 'Upload').replace(/\.pdf$/i, '');
+    // Uploads page (Aj, 2026-07-19): "select products and send them to
+    // separator" -- an already-hosted file (a forge_resources upload or a
+    // Finished Product's file) comes in as a URL, fetched server-side,
+    // rather than making the browser download and re-upload the bytes.
+    let bytes: Buffer;
+    let baseTitle: string;
+    if (file) {
+      bytes = Buffer.from(await file.arrayBuffer());
+      baseTitle = (titleField || file.name || 'Upload').replace(/\.pdf$/i, '');
+    } else {
+      const res = await fetch(fileUrl as string);
+      if (!res.ok) return NextResponse.json({ error: `Could not fetch the file (${res.status})` }, { status: 422 });
+      bytes = Buffer.from(await res.arrayBuffer());
+      baseTitle = (titleField || (fileUrl as string).split('/').pop() || 'Upload').replace(/\.pdf$/i, '');
+    }
 
     const pageCount = await getPdfPageCount(bytes);
     const pagePng = await renderPdfPageToPng(bytes, 1, RENDER_SCALE);
@@ -100,7 +117,7 @@ Return ONLY JSON, no markdown fences: {"border": {"x":0,"y":0,"w":0,"h":0} | nul
 
     const saved: any = { border: null, section_header: null, icon_illustration: [] as any[], color_palette: null, font_reference: [] as any[], spacing_alignment: null };
     const errors: string[] = [];
-    const noteFrom = `Auto-extracted by Separator from "${file.name}"`;
+    const noteFrom = `Auto-extracted by Separator from "${file ? file.name : baseTitle}"`;
 
     if (borderBox) {
       try {
