@@ -17,11 +17,66 @@ const RENDER_SCALE = 1.5;
 // it will separate Border, Section Header, Font, Spacing & Alignment, and
 // Icon & Illustration, colour palettes and create libraries out of them."
 // One PDF per call (the page splits oversized files client-side, same
-// pattern as Style Lab's bulk import) -- page 1 only, same "deeper pages
-// stay one click away" tradeoff already established for bulk-analyze.
-// Deliberately doesn't create a forge_resources row: this is raw ingest
-// material for auto-populating Parts Library, not something meant to be
-// reviewed as its own resource afterward.
+// pattern as Style Lab's bulk import).
+//
+// Page selection (Aj, 2026-07-20, learned from real uploaded TPT PDFs):
+// this used to always read page 1. Tested against two real purchased
+// products today -- in both, page 1 was a promotional marketing
+// thumbnail (a compound collage graphic used as the TPT listing image),
+// not actual usable worksheet design; the real border/header/content
+// pages started several pages in, after a thank-you/copyright page and
+// a "this is a free sample" ad page. Extracting from page 1 unconditionally
+// would have pulled a marketing collage instead of a real design element
+// on every product with this extremely common TPT structure. Now scans
+// the first few pages and picks the first one that looks like actual
+// resource content, skipping promotional covers, copyright/thank-you
+// pages, and credits pages automatically -- see pickBestPage below.
+const MAX_PAGES_TO_SCAN = 6;
+
+async function pickBestPage(bytes: Buffer, pageCount: number): Promise<{ page: number; reason: string }> {
+  const candidateCount = Math.min(MAX_PAGES_TO_SCAN, pageCount);
+  if (candidateCount <= 1) return { page: 1, reason: 'Only one page in this document.' };
+
+  const candidates: { page: number; png: Buffer }[] = [];
+  for (let p = 1; p <= candidateCount; p++) {
+    try {
+      candidates.push({ page: p, png: await renderPdfPageToPng(bytes, p, 0.6) });
+    } catch {
+      // A page failing to render just drops it from the candidate set --
+      // never aborts page selection over one bad page.
+    }
+  }
+  if (candidates.length === 0) return { page: 1, reason: 'Could not render any candidate pages; defaulting to page 1.' };
+
+  try {
+    const content: any[] = [];
+    for (const c of candidates) {
+      content.push({ type: 'text', text: `Page ${c.page}:` });
+      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: c.png.toString('base64') } });
+    }
+    content.push({
+      type: 'text',
+      text: `These are the first ${candidates.length} pages of a teaching-resource PDF, in order. TPT-style products commonly start with a promotional listing-thumbnail collage, then a thank-you/copyright/license page, then sometimes a "free sample" ad page, BEFORE the real usable worksheet content begins.
+
+Pick the page number of the FIRST page that is genuine usable resource content (an actual worksheet, activity page, title page meant to be printed, or similar) -- not a marketing thumbnail, not a copyright/license/thank-you notice, not an ad for the full product, not a credits/attribution page.
+
+Return ONLY JSON, no markdown fences: {"page": <number>, "reason": "<one short sentence>"}`,
+    });
+    const res = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5', max_tokens: 200,
+      messages: [{ role: 'user', content }],
+    });
+    const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const chosen = candidates.find((c) => c.page === parsed.page);
+    if (chosen) return { page: chosen.page, reason: parsed.reason || 'Selected by content classification.' };
+  } catch {
+    // Classification failing for any reason falls through to the page-1
+    // fallback below -- this step is a quality improvement, never a hard
+    // dependency the whole extraction should fail over.
+  }
+  return { page: 1, reason: 'Page classification unavailable; defaulting to page 1.' };
+}
 
 async function saveImagePart(userId: string, buffer: Buffer, title: string, category: string, notes: string, pendingReview: boolean) {
   const path = `${userId}/separator/${category}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
@@ -49,6 +104,7 @@ function toPixelBox(b: any, W: number, H: number) {
   return { x, y, w, h };
 }
 
+
 export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
@@ -56,6 +112,7 @@ export async function POST(request: NextRequest) {
     const file = form.get('file') as unknown as File | null;
     const fileUrl = form.get('fileUrl') as string | null;
     const titleField = form.get('title') as string | null;
+    const pageOverride = form.get('page') ? parseInt(form.get('page') as string, 10) : null;
     if (!userId || (!file && !fileUrl)) {
       return NextResponse.json({ error: 'userId and either file or fileUrl are required' }, { status: 400 });
     }
@@ -77,7 +134,10 @@ export async function POST(request: NextRequest) {
     }
 
     const pageCount = await getPdfPageCount(bytes);
-    const pagePng = await renderPdfPageToPng(bytes, 1, RENDER_SCALE);
+    const pagePick = pageOverride && pageOverride >= 1 && pageOverride <= pageCount
+      ? { page: pageOverride, reason: 'Manually specified.' }
+      : await pickBestPage(bytes, pageCount);
+    const pagePng = await renderPdfPageToPng(bytes, pagePick.page, RENDER_SCALE);
     const img = await loadImage(pagePng);
     const W = img.width, H = img.height;
 
@@ -86,7 +146,7 @@ export async function POST(request: NextRequest) {
     const canvas = createCanvas(W, H);
     canvas.getContext('2d').drawImage(img, 0, 0);
     const palette = extractPalette(canvas);
-    const fonts = await getPageFonts(bytes, 1);
+    const fonts = await getPageFonts(bytes, pagePick.page);
 
     // One vision call locates border / section header / icon regions.
     const prompt = `Identify these on this single teaching-resource page image, if present:
@@ -117,7 +177,7 @@ Return ONLY JSON, no markdown fences: {"border": {"x":0,"y":0,"w":0,"h":0} | nul
 
     const saved: any = { border: null, section_header: null, icon_illustration: [] as any[], color_palette: null, font_reference: [] as any[], spacing_alignment: null };
     const errors: string[] = [];
-    const noteFrom = `Auto-extracted by Separator from "${file ? file.name : baseTitle}"`;
+    const noteFrom = `Auto-extracted by Separator from "${file ? file.name : baseTitle}", page ${pagePick.page} of ${pageCount}`;
 
     if (borderBox) {
       try {
@@ -202,7 +262,7 @@ Return ONLY JSON, no markdown fences: {"border": {"x":0,"y":0,"w":0,"h":0} | nul
       saved.spacing_alignment = inserted;
     } catch (e) { errors.push(`spacing & alignment: ${errorMessage(e)}`); }
 
-    return NextResponse.json({ ok: true, title: baseTitle, pageCount, saved, errors });
+    return NextResponse.json({ ok: true, title: baseTitle, pageCount, pageUsed: pagePick.page, pageSelectionReason: pagePick.reason, saved, errors });
   } catch (e) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
