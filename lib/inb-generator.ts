@@ -21,7 +21,7 @@ import { matchComponentToShape, ShapeMatch } from './schema-shape-match';
 //              those describe the ORIGINAL seller's TPT listing, not
 //              anything this generator produces)
 
-const AUTO_KEYWORDS = ['title/cover page', 'table of contents', 'assembly direction', 'directions page'];
+const AUTO_KEYWORDS = ['title/cover page', 'cover/title page', 'title page', 'cover page', 'table of contents', 'assembly direction', 'directions page'];
 const SKIP_KEYWORDS = ['terms of use', 'credits', 'promotional', 'resource link'];
 
 export type ComponentKind = 'shape' | 'text' | 'auto' | 'skip';
