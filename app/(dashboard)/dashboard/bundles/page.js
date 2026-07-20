@@ -46,9 +46,14 @@ export default function BundlesPage() {
           <h1 className="text-3xl font-bold text-slate-900">Bundles</h1>
           <p className="text-slate-600 mt-1">Manage your product bundles</p>
         </div>
-        <Link href="/dashboard/bundles/new" className="btn-primary">
-          ➕ New Bundle
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/dashboard/worksheet-generators" className="btn-secondary">
+            🧮 Worksheet Generators
+          </Link>
+          <Link href="/dashboard/bundles/new" className="btn-primary">
+            ➕ New Bundle
+          </Link>
+        </div>
       </div>
 
       {/* Bundles Grid */}

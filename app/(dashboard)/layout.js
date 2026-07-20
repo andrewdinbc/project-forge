@@ -18,6 +18,7 @@ const NAV = [
     items: [
       { href: '/dashboard/products', label: '📁 Finished Products' },
       { href: '/dashboard/bundles', label: '📦 Bundles' },
+      { href: '/dashboard/worksheet-generators', label: '🧮 Worksheet Generators' },
       { href: '/dashboard/composer', label: '🧬 Composer' },
     ],
   },
