@@ -3,7 +3,7 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { renderPageAsImage } from 'unpdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
-import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook } from '@/lib/foldable-shapes';
+import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook, drawRadialFoldable, drawTwoPanelComparison, drawPuzzlePiece, drawSilhouetteCard } from '@/lib/foldable-shapes';
 
 const admin: any = supabaseAdmin;
 const PAGE_W = 792; // US Letter landscape, matches the real templates this was calibrated against
@@ -20,7 +20,7 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, shapeType, labels, contents, title, saveToLibrary = true } = (await request.json()) || {};
+    const { userId, shapeType, labels, contents, title, outline, saveToLibrary = true } = (await request.json()) || {};
     if (!userId || !shapeType || !Array.isArray(labels) || labels.length === 0) {
       return NextResponse.json({ error: 'userId, shapeType, and at least one label are required' }, { status: 400 });
     }
@@ -35,13 +35,22 @@ export async function POST(request: NextRequest) {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const drawOpts = {
+    const drawOpts: any = {
       x: MARGIN, y: MARGIN, width: PAGE_W - MARGIN * 2, height: PAGE_H - MARGIN * 2 - 20,
       count, labels: labels.slice(0, count), contents: (contents || []).slice(0, count),
       font, boldFont,
     };
-    if (shapeType === 'flap-book') drawFlapBook(page, drawOpts);
-    else if (shapeType === 'layered-book') drawLayeredBook(page, drawOpts);
+    if (shapeType === 'silhouette-card') drawOpts.outline = outline || 'circle';
+
+    const DRAWERS: Record<string, (page: any, opts: any) => void> = {
+      'flap-book': drawFlapBook,
+      'layered-book': drawLayeredBook,
+      'radial-foldable': drawRadialFoldable,
+      'two-panel-comparison': drawTwoPanelComparison,
+      'puzzle-piece': drawPuzzlePiece,
+      'silhouette-card': drawSilhouetteCard,
+    };
+    DRAWERS[shapeType](page, drawOpts);
 
     const pdfBytes = await pdfDoc.save();
     const pdfDataUrl = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
