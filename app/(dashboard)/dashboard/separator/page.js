@@ -59,7 +59,55 @@ export default function SeparatorPage() {
   const [errors, setErrors] = useState([])
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0)
 
+  // Style Match & Meld (Aj, 2026-07-20): "when I upload a product... AI
+  // tell me it is kind of like these two free ones melded together and
+  // make a new [asset] that combines this one with the free one." A
+  // separate mode from bulk Separator above -- this NEVER extracts pixels
+  // from the upload, it only describes the style and matches against
+  // items Aj already owns free-and-clear, then AI-blends the matches.
+  const [matchAnalyzing, setMatchAnalyzing] = useState(false)
+  const [matchResult, setMatchResult] = useState(null)
+  const [matchError, setMatchError] = useState(null)
+  const [melding, setMelding] = useState(null) // category currently melding
+
   useEffect(() => { getCurrentUser().then((u) => { if (u) setUserId(u.id); setReady(true) }) }, [])
+
+  async function handleMatchUpload(fileList) {
+    const file = fileList?.[0]
+    if (!file || !userId) return
+    setMatchAnalyzing(true); setMatchResult(null); setMatchError(null)
+    try {
+      const formData = new FormData()
+      formData.append('userId', userId)
+      formData.append('file', file)
+      const res = await fetch('/api/style-match/analyze-and-suggest', { method: 'POST', body: formData })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
+      setMatchResult(d)
+    } catch (e) {
+      setMatchError(e.message)
+    } finally {
+      setMatchAnalyzing(false)
+    }
+  }
+
+  async function handleMeld(category, matches) {
+    if (!userId || matches.length < 2) return
+    setMelding(category)
+    try {
+      const res = await fetch('/api/style-match/meld', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, category, partIds: matches.map((m) => m.id) }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || 'Meld failed')
+      setReviewRefreshKey((k) => k + 1) // new melded item shows up in Needs Review below
+    } catch (e) {
+      setMatchError(e.message)
+    } finally {
+      setMelding(null)
+    }
+  }
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList || [])
@@ -129,6 +177,75 @@ export default function SeparatorPage() {
           <input type="file" accept="application/pdf" multiple style={{ display: 'none' }} disabled={processing} onChange={(e) => handleFiles(e.target.files)} />
         </label>
         {processing && progress && <p style={{ fontSize: 12, color: '#7a3c8a', marginTop: 10 }}>{progress}</p>}
+      </div>
+
+      <div style={{ background: '#f4f0fa', border: '1px solid #d9cbe8', borderRadius: 8, padding: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#5a2d6b', marginBottom: 4 }}>🔀 Style Match &amp; Meld</div>
+        <p style={{ fontSize: 12, color: '#6b4b7a', margin: '0 0 14px', lineHeight: 1.5 }}>
+          A different mode from bulk Separator above -- upload a product you like the LOOK of, and this
+          never touches its pixels. It only describes the style in words, then finds the 2 closest items
+          already in your free-license library and offers to AI-blend them into something new. That new
+          blend still lands in Needs Review for you to edit before it's really yours.
+        </p>
+        <label style={{ display: 'inline-block', padding: '9px 18px', background: '#5a2d6b', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: matchAnalyzing ? 'default' : 'pointer', opacity: matchAnalyzing ? 0.6 : 1 }}>
+          {matchAnalyzing ? 'Analyzing…' : '📎 Upload a Product to Match'}
+          <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} disabled={matchAnalyzing} onChange={(e) => handleMatchUpload(e.target.files)} />
+        </label>
+
+        {matchError && <p style={{ fontSize: 11, color: '#a33', marginTop: 10 }}>{matchError}</p>}
+
+        {matchResult && (
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {['border', 'section_header', 'icon_illustration'].map((cat) => {
+              const s = matchResult.suggestions?.[cat]
+              if (!s) return null
+              const label = STYLE_CATEGORIES.find((c) => c.key === cat)?.label || cat
+              return (
+                <div key={cat} style={{ background: '#fff', border: '1px solid #e3d5f0', borderRadius: 6, padding: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#333', marginBottom: 4 }}>{label}</div>
+                  <p style={{ fontSize: 11, color: '#777', margin: '0 0 8px', fontStyle: 'italic' }}>"{s.description}"</p>
+                  {s.note && <p style={{ fontSize: 11, color: '#a06b1f' }}>{s.note}</p>}
+                  {s.matches?.length > 0 && (
+                    <>
+                      <div style={{ display: 'flex', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {s.matches.map((m) => (
+                          <div key={m.id} style={{ textAlign: 'center' }}>
+                            <img src={m.file_url} alt={m.title} style={{ width: 70, height: 50, objectFit: 'contain', border: '1px solid #e3ddd0', borderRadius: 4, background: '#fafafa' }} />
+                            <p style={{ fontSize: 9, color: '#555', margin: '3px 0 0', maxWidth: 80 }}>{m.title}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {s.rationale && <p style={{ fontSize: 11, color: '#5a2d6b', margin: '0 0 8px' }}>💡 {s.rationale}</p>}
+                      {s.matches.length >= 2 && (
+                        <button onClick={() => handleMeld(cat, s.matches)} disabled={melding === cat}
+                          style={{ fontSize: 11, fontWeight: 600, padding: '6px 14px', background: '#5a2d6b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', opacity: melding === cat ? 0.6 : 1 }}>
+                          {melding === cat ? 'Melding…' : `Meld these ${s.matches.length} into something new →`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+            {matchResult.fontSuggestion?.match && (
+              <div style={{ background: '#fff', border: '1px solid #e3d5f0', borderRadius: 6, padding: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#333', marginBottom: 4 }}>🔤 Font</div>
+                <p style={{ fontSize: 11, color: '#777', margin: '0 0 4px', fontStyle: 'italic' }}>"{matchResult.fontSuggestion.description}"</p>
+                <p style={{ fontSize: 12, color: '#5a2d6b' }}>Closest font already in your library: <strong>{matchResult.fontSuggestion.match.title}</strong></p>
+              </div>
+            )}
+            {matchResult.palette?.length > 0 && (
+              <div style={{ background: '#fff', border: '1px solid #e3d5f0', borderRadius: 6, padding: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#333', marginBottom: 6 }}>🌈 Colors detected (free to use directly -- colors aren't copyrightable)</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {matchResult.palette.map((hex) => (
+                    <div key={hex} title={hex} style={{ width: 28, height: 28, borderRadius: 4, background: hex, border: '1px solid #ddd' }} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <PendingReview userId={userId} refreshKey={reviewRefreshKey} />
