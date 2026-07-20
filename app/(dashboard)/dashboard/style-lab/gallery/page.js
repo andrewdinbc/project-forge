@@ -134,17 +134,18 @@ export default function GalleryPage() {
   const preview = current ? previews[current.id] : null
 
   return (
-    <div style={{ fontFamily: FONT_BODY, maxWidth: 1000, margin: '0 auto', padding: '24px 20px' }}>
+    <div style={{ fontFamily: FONT_BODY, maxWidth: 1240, margin: '0 auto', padding: '24px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <h1 style={{ color: C.navy, fontSize: 22, margin: 0 }}>🔍 Browse for Inspiration</h1>
         <a href="/dashboard/style-lab" style={{ fontSize: 12, color: '#888' }}>← Style Lab</a>
       </div>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
-        Everything imported into Style Lab, organized by the same layers Extract Style Layers already
-        pulls out. Flip through one at a time; when something's especially appealing, flag it for
-        Visual Layer Processing -- nothing here is usable until it's actually saved to Parts Library.
-        To change how something's organized, go edit its observations on the Style Lab page (uncheck
-        one there and it drops out of that tab here).
+        Modeled on OneNote Class Notebook's Review Student Work pane: pick a layer, pick an item from
+        the list, it opens large -- click any other item in the list to jump straight to it, or use
+        the arrows to step through in order. When something's especially appealing, flag it for
+        Visual Layer Processing -- nothing here is usable until it's saved to Parts Library. To
+        change how something's organized, edit its observations on the Style Lab page (uncheck one
+        there and it drops out of that tab here).
       </p>
 
       {unanalyzed.length > 0 && (
@@ -189,57 +190,91 @@ export default function GalleryPage() {
           </p>
         </div>
       ) : (
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-          {/* Prominent top nav -- per Aj: "right and left arrow at the top as the
-              means for moving from one item to the next." Large, high-contrast,
-              impossible to miss. */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderBottom: `1px solid ${C.border}`, background: C.navy }}>
-            <button
-              onClick={() => go(-1)} disabled={currentIndex === 0}
-              style={{ fontSize: 22, lineHeight: 1, border: 'none', background: 'none', color: '#fff', cursor: currentIndex === 0 ? 'default' : 'pointer', opacity: currentIndex === 0 ? 0.3 : 1, padding: '4px 16px' }}
-            >←</button>
-            <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>{activeLayerMeta?.label} — {currentIndex + 1} of {currentList.length}</span>
-            <button
-              onClick={() => go(1)} disabled={currentIndex >= currentList.length - 1}
-              style={{ fontSize: 22, lineHeight: 1, border: 'none', background: 'none', color: '#fff', cursor: currentIndex >= currentList.length - 1 ? 'default' : 'pointer', opacity: currentIndex >= currentList.length - 1 ? 0.3 : 1, padding: '4px 16px' }}
-            >→</button>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          {/* Persistent list, like OneNote's student roster in the Review
+              Student Work pane -- click any item to jump straight to it,
+              instead of only being able to step one at a time. Aj, 2026-07-19. */}
+          <div style={{ flex: '0 0 240px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, background: '#fafafa', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              {activeLayerMeta?.label} ({currentList.length})
+            </div>
+            <div style={{ maxHeight: 640, overflowY: 'auto' }}>
+              {currentList.map((r, idx) => {
+                const isSelected = idx === currentIndex
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => setIndex(selectedLayer, idx)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px',
+                      border: 'none', borderBottom: '1px solid #f0ece3', cursor: 'pointer',
+                      background: isSelected ? '#fdf6ea' : '#fff',
+                      borderLeft: isSelected ? `3px solid ${C.gold}` : '3px solid transparent',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? C.gold : '#333', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.marked_for_processing && '🖼 '}{r.title}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          {/* Visual, maximized -- this is the whole point of browsing for
-              inspiration, per Aj: "Visual Layer maximized naturally." */}
-          <div style={{ minHeight: 560, background: '#2b2b2b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            {preview?.loading && <p style={{ fontSize: 12, color: '#ccc' }}>Rendering preview…</p>}
-            {preview?.error && <p style={{ fontSize: 12, color: '#ff8080' }}>{preview.error}</p>}
-            {preview?.imageUrl && <img src={preview.imageUrl} alt={current.title} style={{ maxWidth: '100%', maxHeight: 700, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }} />}
-            {!preview && current?.source_type === 'url' && <p style={{ fontSize: 12, color: '#ccc' }}>URL resource -- no page image to preview.</p>}
-          </div>
+          {/* Main area -- large, dominant, exactly what OneNote does when
+              you click a student's name: the page fills the main view. */}
+          <div style={{ flex: '1 1 600px', minWidth: 0, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+            {/* Prominent top nav -- per Aj: "right and left arrow at the top as the
+                means for moving from one item to the next." Large, high-contrast,
+                impossible to miss. */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderBottom: `1px solid ${C.border}`, background: C.navy }}>
+              <button
+                onClick={() => go(-1)} disabled={currentIndex === 0}
+                style={{ fontSize: 22, lineHeight: 1, border: 'none', background: 'none', color: '#fff', cursor: currentIndex === 0 ? 'default' : 'pointer', opacity: currentIndex === 0 ? 0.3 : 1, padding: '4px 16px' }}
+              >←</button>
+              <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>{activeLayerMeta?.label} — {currentIndex + 1} of {currentList.length}</span>
+              <button
+                onClick={() => go(1)} disabled={currentIndex >= currentList.length - 1}
+                style={{ fontSize: 22, lineHeight: 1, border: 'none', background: 'none', color: '#fff', cursor: currentIndex >= currentList.length - 1 ? 'default' : 'pointer', opacity: currentIndex >= currentList.length - 1 ? 0.3 : 1, padding: '4px 16px' }}
+              >→</button>
+            </div>
 
-          {/* Text, minimized -- a slim compact strip, not a competing panel.
-              Per Aj: "Live view text minimized naturally." */}
-          <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, background: '#fafafa' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: C.navy, margin: 0 }}>{current?.title}</p>
-              {current?.origin === 'tpt_purchase' && (
-                <span style={{ fontSize: 8, fontWeight: 700, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '1px 5px' }}>TPT PURCHASE</span>
-              )}
-              <span style={{ fontSize: 10, color: '#aaa' }}>
-                {(current?.layer_notes?.[selectedLayer] || []).filter((i) => i.included).map((i) => i.text).join(' · ')}
-              </span>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-                <a href="/dashboard/style-lab" style={{ fontSize: 10, color: '#888' }}>Open in Style Lab →</a>
-                <button
-                  onClick={() => toggleProcessing(current)}
-                  disabled={processingBusyId === current?.id}
-                  style={{
-                    padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
-                    cursor: processingBusyId === current?.id ? 'default' : 'pointer',
-                    background: current?.marked_for_processing ? '#eef6f0' : C.gold,
-                    color: current?.marked_for_processing ? C.green : '#fff',
-                    border: current?.marked_for_processing ? `1px solid ${C.green}` : 'none',
-                  }}
-                >
-                  {current?.marked_for_processing ? '✓ In Processing' : '🖼 Add to Processing'}
-                </button>
+            {/* Visual, maximized -- this is the whole point of browsing for
+                inspiration, per Aj: "Visual Layer maximized naturally." */}
+            <div style={{ minHeight: 560, background: '#2b2b2b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              {preview?.loading && <p style={{ fontSize: 12, color: '#ccc' }}>Rendering preview…</p>}
+              {preview?.error && <p style={{ fontSize: 12, color: '#ff8080' }}>{preview.error}</p>}
+              {preview?.imageUrl && <img src={preview.imageUrl} alt={current.title} style={{ maxWidth: '100%', maxHeight: 700, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }} />}
+              {!preview && current?.source_type === 'url' && <p style={{ fontSize: 12, color: '#ccc' }}>URL resource -- no page image to preview.</p>}
+            </div>
+
+            {/* Text, minimized -- a slim compact strip, not a competing panel.
+                Per Aj: "Live view text minimized naturally." */}
+            <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, background: '#fafafa' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: C.navy, margin: 0 }}>{current?.title}</p>
+                {current?.origin === 'tpt_purchase' && (
+                  <span style={{ fontSize: 8, fontWeight: 700, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '1px 5px' }}>TPT PURCHASE</span>
+                )}
+                <span style={{ fontSize: 10, color: '#aaa' }}>
+                  {(current?.layer_notes?.[selectedLayer] || []).filter((i) => i.included).map((i) => i.text).join(' · ')}
+                </span>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+                  <a href="/dashboard/style-lab" style={{ fontSize: 10, color: '#888' }}>Open in Style Lab →</a>
+                  <button
+                    onClick={() => toggleProcessing(current)}
+                    disabled={processingBusyId === current?.id}
+                    style={{
+                      padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                      cursor: processingBusyId === current?.id ? 'default' : 'pointer',
+                      background: current?.marked_for_processing ? '#eef6f0' : C.gold,
+                      color: current?.marked_for_processing ? C.green : '#fff',
+                      border: current?.marked_for_processing ? `1px solid ${C.green}` : 'none',
+                    }}
+                  >
+                    {current?.marked_for_processing ? '✓ In Processing' : '🖼 Add to Processing'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
