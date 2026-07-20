@@ -5,10 +5,10 @@ import { errorMessage } from '@/lib/error-message';
 const admin: any = supabaseAdmin;
 
 // Saves the current Asset Modifier canvas as a new Parts Library asset.
-// POST { userId, dataUrl, title, sourcePartId? }
+// POST { userId, dataUrl, title, sourcePartId?, category? }
 export async function POST(request: NextRequest) {
   try {
-    const { userId, dataUrl, title, sourcePartId } = (await request.json()) || {};
+    const { userId, dataUrl, title, sourcePartId, category } = (await request.json()) || {};
     if (!userId || !dataUrl || !title) {
       return NextResponse.json({ error: 'userId, dataUrl, and title are required' }, { status: 400 });
     }
@@ -22,6 +22,13 @@ export async function POST(request: NextRequest) {
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
     const { data: urlData } = admin.storage.from('design-assets').getPublicUrl(path);
 
+    // Per Aj, 2026-07-19: Product Builder's Border/Section Header/Font/Icon
+    // & Illustration "editors" are all this same Asset Modifier, launched
+    // with a category hint so what gets saved lands in the right Parts
+    // Library slot instead of the generic 'asset_modifier' bucket.
+    const validCategories = new Set(['border', 'section_header', 'font', 'icon_illustration']);
+    const resolvedCategory = validCategories.has(category) ? category : 'asset_modifier';
+
     const { data: inserted, error: insErr } = await admin
       .from('library_parts')
       .insert({
@@ -30,7 +37,7 @@ export async function POST(request: NextRequest) {
         source_id: `asset-modifier:${sourcePartId || 'blank'}:${Date.now()}`,
         source_product_id: null,
         title: String(title).trim() || 'Modified asset',
-        category: 'asset_modifier',
+        category: resolvedCategory,
         notes: sourcePartId ? `Modified from part ${sourcePartId}` : 'Created in Asset Modifier',
         file_url: urlData.publicUrl,
       })

@@ -78,6 +78,18 @@ export default function DashboardLayout({ children }) {
             📦 Bundles
           </Link>
           <Link
+            href="/dashboard/product-builder"
+            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
+          >
+            🧩 Product Builder
+          </Link>
+          <Link
+            href="/dashboard/spacing-alignment-editor"
+            className="block pl-8 pr-4 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 text-sm transition-colors"
+          >
+            📐 Spacing & Alignment Editor
+          </Link>
+          <Link
             href="/dashboard/composer"
             className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
           >

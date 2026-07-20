@@ -34,12 +34,20 @@ import { getCurrentUser } from '@/lib/auth';
 // dimension/connector tools. Flag which of these you actually want next and
 // they can be built properly rather than bolted on.
 
+const CATEGORY_BADGE_LABELS = {
+  border: '🖼 Border', section_header: '📑 Section Header', font: '🔤 Font', icon_illustration: '🎨 Icon & Illustration',
+};
+
 function AssetModifierInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialAssetUrl = searchParams.get('assetUrl') || '';
   const initialTitle = searchParams.get('title') || 'Modified asset';
   const sourcePartId = searchParams.get('sourcePartId') || null;
+  // Product Builder (Aj, 2026-07-19): "Border/Section Header/Font/Icon &
+  // Illustration editors" -- all this same Asset Modifier, launched with a
+  // category hint so Save goes into the right Parts Library slot.
+  const incomingCategory = searchParams.get('category') || null;
   const initialTool = searchParams.get('tool') || 'select';
   const initialFontFamily = searchParams.get('fontFamily') || '';
   // Handoff from Style Lab's AI Instruction Removal box (Aj, 2026-07-19):
@@ -451,7 +459,7 @@ function AssetModifierInner() {
       const dataUrl = canvas.toDataURL({ format: 'png' });
       const res = await fetch('/api/asset-modifier/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, dataUrl, title, sourcePartId }),
+        body: JSON.stringify({ userId, dataUrl, title, sourcePartId, category: incomingCategory }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Save failed');
@@ -481,6 +489,11 @@ function AssetModifierInner() {
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: '#1c3557', margin: 0 }}>🎨 Asset Modifier</h1>
+        {incomingCategory && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 12, padding: '3px 10px' }}>
+            Saving into: {CATEGORY_BADGE_LABELS[incomingCategory] || incomingCategory}
+          </span>
+        )}
         <input
           type="text" value={title} onChange={(e) => setTitle(e.target.value)}
           style={{ fontSize: 13, padding: '5px 8px', border: '1px solid #e3ddd0', borderRadius: 6, minWidth: 220 }}
