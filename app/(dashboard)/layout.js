@@ -90,10 +90,22 @@ export default function DashboardLayout({ children }) {
             🎨 Style Lab
           </Link>
           <Link
+            href="/dashboard/asset-modifier"
+            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
+          >
+            🎨 Style Editor
+          </Link>
+          <Link
+            href="/dashboard/content-editor"
+            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
+          >
+            📖 Content Editor
+          </Link>
+          <Link
             href="/dashboard/schema-lab"
             className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
           >
-            🧬 Schema Lab
+            🧬 Schema Editor
           </Link>
           <Link
             href="/dashboard/foldable-shapes"

@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { COLORS as C } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
 
@@ -23,6 +24,8 @@ import { getCurrentUser } from '@/lib/auth'
 //      visually with your own design assets is a Composer/Asset Modifier/
 //      Font Modifier step after, same as any other AI-generated content.
 export default function SchemaLabPage() {
+  const searchParams = useSearchParams()
+  const preselectId = searchParams.get('preselect')
   const [userId, setUserId] = useState(null)
   const [schemas, setSchemas] = useState([])
   const [resources, setResources] = useState([])
@@ -57,6 +60,16 @@ export default function SchemaLabPage() {
         setResources(r.resources || [])
         setProfiles(p.profiles || [])
         setLoading(false)
+        // Sent here via "Add to Schema Editor" from the Visual Layer Live
+        // View (Aj, 2026-07-19) -- auto-select it, and analyze its structure
+        // first if that hasn't happened yet (selection requires it).
+        if (preselectId) {
+          setSelectedForSchema((prev) => new Set(prev).add(preselectId))
+          const match = (r.resources || []).find((x) => x.id === preselectId)
+          if (match && !match.activity_structure_notes) {
+            analyzeStructure(match)
+          }
+        }
       })
     })
   }, [])
