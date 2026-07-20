@@ -3,12 +3,107 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import { STYLE_CATEGORIES } from '@/lib/product-builder-categories';
 
 // Personal library of favorite individual components (visual or content)
 // starred from Composer or Style Lab, independent of which product they
 // originally came from -- so they can be reused across future builds
 // instead of re-finding them each time. Aj, 2026-07-19: "build a library
 // of what I like to inject into new activities or content."
+//
+// 2026-07-19, later: "I want to have a parts library for each of these
+// things, so that when I begin making them, I can roll out activities
+// extremely quickly." Added a dedicated section per Product Builder style
+// category (Border, Section Header, Font, Spacing & Alignment, Icon &
+// Illustration) at the top, pulled out of the generic Extracted
+// Images / Visual & Content Components buckets below so nothing shows up
+// twice.
+const STYLE_CATEGORY_KEYS = new Set(['border', 'section_header', 'font', 'font_reference', 'spacing_alignment', 'icon_illustration']);
+
+function readPreset(notes) {
+  try { return JSON.parse(notes); } catch { return null; }
+}
+
+// One dedicated library for a single style category -- image grid for the
+// four visual ones, a text list for Spacing & Alignment (a layout rule has
+// no picture to show).
+function StyleLibrarySection({ cat, items, busyId, onRemove }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1c3557', margin: 0 }}>
+          {cat.icon} {cat.label} ({items.length})
+        </h3>
+        <a
+          href={cat.key === 'spacing_alignment' ? cat.editorPath : `${cat.editorPath}?${new URLSearchParams({ category: cat.key, title: cat.label }).toString()}`}
+          style={{ fontSize: 11, fontWeight: 600, color: '#7a3c8a', textDecoration: 'underline' }}
+        >
+          + Open {cat.editorLabel} →
+        </a>
+      </div>
+      {items.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#999', fontStyle: 'italic', margin: 0 }}>
+          Nothing here yet -- use the editor link above to create your first one.
+        </p>
+      ) : cat.key === 'spacing_alignment' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {items.map((p) => {
+            const preset = readPreset(p.notes)
+            return (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #e3ddd0', borderRadius: 8, padding: '8px 12px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: '#1c3557', margin: 0 }}>{p.title}</p>
+                  {preset && (
+                    <p style={{ fontSize: 10, color: '#999', margin: '2px 0 0' }}>
+                      Margins {preset.marginTop}/{preset.marginRight}/{preset.marginBottom}/{preset.marginLeft}pt · {preset.alignment} · {preset.lineSpacing}× spacing
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+                  <a href="/dashboard/spacing-alignment-editor" style={{ fontSize: 11, color: '#2f6b41', textDecoration: 'underline' }}>Edit</a>
+                  <button onClick={() => onRemove(p.id)} disabled={busyId === p.id} style={{ fontSize: 11, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                    {busyId === p.id ? '…' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10 }}>
+          {items.map((p) => (
+            <div key={p.id} style={{ background: '#fff', border: '1px solid #e3ddd0', borderRadius: 8, overflow: 'hidden' }}>
+              {p.file_url ? (
+                <a href={p.file_url} target="_blank" rel="noreferrer">
+                  <img src={p.file_url} alt={p.title} style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }} />
+                </a>
+              ) : (
+                <div style={{ width: '100%', height: 90, background: '#f0ece3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{cat.icon}</div>
+              )}
+              <div style={{ padding: 6 }}>
+                <p style={{ fontSize: 10, color: '#555', margin: 0, lineHeight: 1.3 }} title={p.title}>{p.title}</p>
+                <div style={{ display: 'flex', gap: 8, marginTop: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button onClick={() => onRemove(p.id)} disabled={busyId === p.id} style={{ fontSize: 9, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                    {busyId === p.id ? '…' : 'Remove'}
+                  </button>
+                  {p.file_url && (
+                    <a
+                      href={`/dashboard/asset-modifier?${new URLSearchParams({ assetUrl: p.file_url, title: p.title || 'Asset', sourcePartId: p.id, category: cat.key }).toString()}`}
+                      style={{ fontSize: 9, color: '#7a3c8a', textDecoration: 'underline' }}
+                    >
+                      Edit
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function LibraryPartsPage() {
   const [userId, setUserId] = useState(null);
   const [parts, setParts] = useState([]);
@@ -75,9 +170,9 @@ export default function LibraryPartsPage() {
 
   if (loading) return <div style={{ padding: 40 }}>Loading…</div>;
 
-  const visualComponents = parts.filter((p) => p.kind === 'component');
+  const visualComponents = parts.filter((p) => p.kind === 'component' && !STYLE_CATEGORY_KEYS.has(p.category));
   const contentPdf = parts.filter((p) => p.kind === 'resource'); // Style Lab resources -- both PDF and URL live here
-  const extractedImages = parts.filter((p) => p.kind === 'image');
+  const extractedImages = parts.filter((p) => p.kind === 'image' && !STYLE_CATEGORY_KEYS.has(p.category));
 
   function Section({ title, icon, items, emptyHint }) {
     return (
@@ -149,6 +244,9 @@ export default function LibraryPartsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1c3557', margin: 0 }}>📦 Parts Library</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <a href="/dashboard/product-builder" style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#2f6b41', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
+            🧩 Product Builder
+          </a>
           <a href="/dashboard/asset-modifier" style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
             🎨 Asset Modifier
           </a>
@@ -164,6 +262,18 @@ export default function LibraryPartsPage() {
         Star anything with the ⭐ button in Composer or Style Lab to add it here, or use "🔬 Extract
         Images" on a product's page to pull out every embedded image automatically.
       </p>
+
+      <div style={{ background: '#faf9f5', border: '1px solid #e3ddd0', borderRadius: 8, padding: 16, marginBottom: 28 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1c3557', margin: '0 0 12px' }}>
+          🧩 Product Builder Libraries
+        </h2>
+        {STYLE_CATEGORIES.map((cat) => {
+          const keys = cat.key === 'font' ? ['font', 'font_reference'] : [cat.key]
+          const items = parts.filter((p) => keys.includes(p.category))
+          return <StyleLibrarySection key={cat.key} cat={cat} items={items} busyId={busyId} onRemove={remove} />
+        })}
+      </div>
+
       <div style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1c3557', marginBottom: 10 }}>
           🖼️ Extracted Images ({extractedImages.length})
