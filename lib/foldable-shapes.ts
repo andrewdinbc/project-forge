@@ -98,7 +98,7 @@ export const FOLDABLE_SHAPES = [
     minCount: 1,
     maxCount: 1,
     defaultCount: 1,
-    matchKeywords: ['pocket', 'envelope', 'pouch', 'storage'],
+    matchKeywords: ['pocket', 'envelope', 'pouch', 'storage pocket'],
   },
   {
     key: 'accordion-booklet',
