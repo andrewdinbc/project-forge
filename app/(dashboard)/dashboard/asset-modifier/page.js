@@ -48,6 +48,11 @@ function AssetModifierInner() {
   // Illustration editors" -- all this same Asset Modifier, launched with a
   // category hint so Save goes into the right Parts Library slot.
   const incomingCategory = searchParams.get('category') || null;
+  // Needs Review (Aj, 2026-07-19): arriving from a raw Separator crop --
+  // on a successful save here, the pending original gets deleted (the
+  // saved result is a new, separate, non-pending library item; this is
+  // the actual "changed by me" step that makes it copyright-safe to keep).
+  const fromPending = searchParams.get('fromPending') === '1';
   const initialTool = searchParams.get('tool') || 'select';
   const initialFontFamily = searchParams.get('fontFamily') || '';
   // Handoff from Style Lab's AI Instruction Removal box (Aj, 2026-07-19):
@@ -470,6 +475,11 @@ function AssetModifierInner() {
       if (!res.ok) throw new Error(d.error || 'Save failed');
       setSavedMsg('Saved to Parts Library ✓');
       setSavedPart(d.part);
+      if (fromPending && sourcePartId) {
+        try {
+          await fetch(`/api/library-parts?userId=${userId}&id=${sourcePartId}`, { method: 'DELETE' });
+        } catch { /* the edited save already succeeded -- a stray pending row can be dismissed by hand */ }
+      }
     } catch (e) {
       setSavedMsg(e.message);
     } finally {

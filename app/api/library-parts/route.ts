@@ -5,16 +5,25 @@ const admin: any = supabaseAdmin;
 
 // Parts Library: save/list/remove favorite individual components or
 // Style Lab resources for reuse across future products. Aj, 2026-07-19.
+//
+// 2026-07-19, later: "The parts library is only for after going through
+// style lab and been changed by me for copyright purposes." Raw Separator
+// extractions land with pending_review=true and are excluded here by
+// default -- they don't count as real library items until edited + saved
+// in the Style Editor. ?pendingOnly=1 fetches the review queue instead.
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
+  const pendingOnly = searchParams.get('pendingOnly') === '1';
   if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
   try {
-    const { data, error } = await admin
+    let query = admin
       .from('library_parts')
       .select('*, products:source_product_id (id, title)')
       .eq('user_id', userId)
+      .eq('pending_review', pendingOnly)
       .order('created_at', { ascending: false });
+    const { data, error } = await query;
     if (error) throw error;
     return NextResponse.json({ parts: data || [] });
   } catch (e) {

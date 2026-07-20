@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { COLORS as C, FONT_BODY } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
 import { STYLE_CATEGORIES } from '@/lib/product-builder-categories'
+import PendingReview from '@/components/PendingReview'
 
 // Separator (Aj, 2026-07-19): "when I add a series of pdf documents to it,
 // it will separate Border, Section Header, Font, Spacing & Alignment, and
@@ -56,6 +57,7 @@ export default function SeparatorPage() {
   const [totals, setTotals] = useState(null)
   const [perFile, setPerFile] = useState([])
   const [errors, setErrors] = useState([])
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0)
 
   useEffect(() => { getCurrentUser().then((u) => { if (u) setUserId(u.id); setReady(true) }) }, [])
 
@@ -98,6 +100,7 @@ export default function SeparatorPage() {
     } finally {
       setProgress(null)
       setProcessing(false)
+      setReviewRefreshKey((k) => k + 1)
     }
   }
 
@@ -111,10 +114,13 @@ export default function SeparatorPage() {
       </div>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
         Add a batch of PDFs and it automatically pulls out a Border, Section Header, up to 5 Icon &amp;
-        Illustration elements, a Color Palette, the fonts used, and a starting Spacing &amp; Alignment
-        preset from each one -- straight into their Parts Library sections, ready to browse, edit in
-        Asset Modifier, or generate varieties from. Page 1 of each PDF only (same as other bulk tools
-        here) -- deeper pages stay reachable via Style Lab if you want to work through those by hand.
+        Illustration elements, and a Color Palette from each one -- as raw crops from that PDF, which
+        land in <strong>Needs Review</strong> below, not your Parts Library. Edit each one in the Style
+        Editor and save to actually add it to your library -- that's the copyright-safe step, since a
+        raw crop is still someone else's pixels until you've changed it. Fonts and a starting Spacing
+        &amp; Alignment preset aren't pixel copies, so those go straight to their libraries. Page 1 of
+        each PDF only (same as other bulk tools here) -- deeper pages stay reachable via Style Lab if
+        you want to work through those by hand.
       </p>
 
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: 20, textAlign: 'center', marginBottom: 20 }}>
@@ -124,6 +130,8 @@ export default function SeparatorPage() {
         </label>
         {processing && progress && <p style={{ fontSize: 12, color: '#7a3c8a', marginTop: 10 }}>{progress}</p>}
       </div>
+
+      <PendingReview userId={userId} refreshKey={reviewRefreshKey} />
 
       {totals && (
         <div style={{ background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 8, padding: 16, marginBottom: 20 }}>
@@ -138,9 +146,10 @@ export default function SeparatorPage() {
             ))}
           </div>
           {!processing && (
-            <a href="/dashboard/library-parts" style={{ display: 'inline-block', marginTop: 12, fontSize: 12, fontWeight: 600, color: '#fff', background: '#2f6b41', borderRadius: 6, padding: '6px 14px', textDecoration: 'none' }}>
-              View in Parts Library →
-            </a>
+            <p style={{ fontSize: 11, color: '#2f6b41', marginTop: 10 }}>
+              Fonts and the Spacing &amp; Alignment preset are in their libraries now. Everything else is
+              waiting in Needs Review above -- edit and save each one to add it to your library.
+            </p>
           )}
         </div>
       )}

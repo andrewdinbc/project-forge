@@ -23,7 +23,7 @@ const RENDER_SCALE = 1.5;
 // material for auto-populating Parts Library, not something meant to be
 // reviewed as its own resource afterward.
 
-async function saveImagePart(userId: string, buffer: Buffer, title: string, category: string, notes: string) {
+async function saveImagePart(userId: string, buffer: Buffer, title: string, category: string, notes: string, pendingReview: boolean) {
   const path = `${userId}/separator/${category}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
   const { error: upErr } = await admin.storage.from('design-assets').upload(path, buffer, { contentType: 'image/png', upsert: true });
   if (upErr) throw new Error(upErr.message);
@@ -33,7 +33,7 @@ async function saveImagePart(userId: string, buffer: Buffer, title: string, cate
     .insert({
       user_id: userId, kind: 'image',
       source_id: `separator:${category}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title, category, notes, file_url: urlData.publicUrl,
+      title, category, notes, file_url: urlData.publicUrl, pending_review: pendingReview,
     })
     .select().single();
   if (insErr) throw new Error(insErr.message);
@@ -122,20 +122,20 @@ Return ONLY JSON, no markdown fences: {"border": {"x":0,"y":0,"w":0,"h":0} | nul
     if (borderBox) {
       try {
         const crop = await cropPngRegion(pagePng, borderBox.x, borderBox.y, borderBox.w, borderBox.h);
-        saved.border = await saveImagePart(userId, crop, `${baseTitle} border`, 'border', noteFrom);
+        saved.border = await saveImagePart(userId, crop, `${baseTitle} border`, 'border', noteFrom, true);
       } catch (e) { errors.push(`border: ${errorMessage(e)}`); }
     }
     if (headerBox) {
       try {
         const crop = await cropPngRegion(pagePng, headerBox.x, headerBox.y, headerBox.w, headerBox.h);
-        saved.section_header = await saveImagePart(userId, crop, `${baseTitle} section header`, 'section_header', noteFrom);
+        saved.section_header = await saveImagePart(userId, crop, `${baseTitle} section header`, 'section_header', noteFrom, true);
       } catch (e) { errors.push(`section header: ${errorMessage(e)}`); }
     }
     for (let i = 0; i < iconBoxes.length; i++) {
       try {
         const b = iconBoxes[i];
         const crop = await cropPngRegion(pagePng, b.x, b.y, b.w, b.h);
-        saved.icon_illustration.push(await saveImagePart(userId, crop, `${baseTitle} icon ${i + 1}`, 'icon_illustration', noteFrom));
+        saved.icon_illustration.push(await saveImagePart(userId, crop, `${baseTitle} icon ${i + 1}`, 'icon_illustration', noteFrom, true));
       } catch (e) { errors.push(`icon ${i + 1}: ${errorMessage(e)}`); }
     }
 
@@ -146,10 +146,18 @@ Return ONLY JSON, no markdown fences: {"border": {"x":0,"y":0,"w":0,"h":0} | nul
         palette.forEach((c: any, i: number) => { sctx.fillStyle = c.hex; sctx.fillRect(60 * i, 0, 60, 70); });
         let buf: Buffer;
         try { buf = await sw.encode('png'); } catch { buf = sw.toBuffer('image/png'); }
-        saved.color_palette = await saveImagePart(userId, buf, `${baseTitle} palette`, 'color_palette', `${noteFrom}. Colors: ${palette.map((c: any) => c.hex).join(', ')}`);
+        saved.color_palette = await saveImagePart(userId, buf, `${baseTitle} palette`, 'color_palette', `${noteFrom}. Colors: ${palette.map((c: any) => c.hex).join(', ')}`, true);
       } catch (e) { errors.push(`palette: ${errorMessage(e)}`); }
     }
 
+    // Fonts and the Spacing & Alignment preset skip pending_review (stay
+    // default false, land directly in Parts Library): a font NAME is a
+    // fact, not the copyrighted glyph program itself, and a margin/
+    // alignment preset is numbers Aj derived, not a pixel copy of anyone's
+    // page -- neither is the "raw extracted content" the review gate
+    // exists for. Border/Section Header/Icon & Illustration/Color Palette
+    // above are actual pixels lifted from someone else's PDF, which is
+    // exactly what needs to go through the Style Editor first.
     for (const f of fonts) {
       try {
         const { data: inserted, error } = await admin

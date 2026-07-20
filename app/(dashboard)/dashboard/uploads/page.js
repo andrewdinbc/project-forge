@@ -5,6 +5,7 @@ import { COLORS as C, FONT_BODY } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
 import { getUserProducts } from '@/lib/products'
 import { STYLE_CATEGORIES } from '@/lib/product-builder-categories'
+import PendingReview from '@/components/PendingReview'
 
 // Uploads (Aj, 2026-07-19): "a new folder called Uploads. This is where
 // everything that I bring up is stored." One place to see everything
@@ -62,6 +63,7 @@ export default function UploadsPage() {
   const [sending, setSending] = useState(false)
   const [sendProgress, setSendProgress] = useState(null)
   const [sendTotals, setSendTotals] = useState(null)
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0)
   const [sendErrors, setSendErrors] = useState([])
 
   useEffect(() => {
@@ -159,6 +161,7 @@ export default function UploadsPage() {
     }
     setSendProgress(null)
     setSending(false)
+    setReviewRefreshKey((k) => k + 1)
   }
 
   if (loading) return <div style={{ padding: 40, fontFamily: FONT_BODY }}>Loading…</div>
@@ -177,7 +180,8 @@ export default function UploadsPage() {
       <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
         Everything you've brought into Forge, in one place -- PDFs and URLs uploaded to Style Lab, plus
         every Finished Product with a file. Select anything below and send it straight to the Separator
-        without re-uploading.
+        without re-uploading. Its raw crops land in Needs Review, not your Parts Library, until you've
+        actually edited and saved each one in the Style Editor.
       </p>
 
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
@@ -201,6 +205,8 @@ export default function UploadsPage() {
         {sendProgress && <span style={{ fontSize: 11, color: '#7a3c8a' }}>{sendProgress}</span>}
       </div>
 
+      <PendingReview userId={userId} refreshKey={reviewRefreshKey} />
+
       {sendTotals && (
         <div style={{ background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 8, padding: 14, marginBottom: 20 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#2f6b41', marginBottom: 8 }}>{sending ? 'Extracted so far' : 'Done'}</div>
@@ -212,9 +218,10 @@ export default function UploadsPage() {
             ))}
           </div>
           {!sending && (
-            <a href="/dashboard/library-parts" style={{ display: 'inline-block', marginTop: 10, fontSize: 12, fontWeight: 600, color: '#fff', background: '#2f6b41', borderRadius: 6, padding: '5px 12px', textDecoration: 'none' }}>
-              View in Parts Library →
-            </a>
+            <p style={{ fontSize: 11, color: '#2f6b41', marginTop: 10 }}>
+              Fonts and the Spacing &amp; Alignment preset are in their libraries now. Everything else is
+              waiting in Needs Review above -- edit and save each one to add it to your library.
+            </p>
           )}
           {sendErrors.length > 0 && (
             <div style={{ marginTop: 8 }}>

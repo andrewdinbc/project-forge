@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { STYLE_CATEGORIES } from '@/lib/product-builder-categories';
+import PendingReview from '@/components/PendingReview';
 
 // Personal library of favorite individual components (visual or content)
 // starred from Composer or Style Lab, independent of which product they
@@ -294,8 +295,12 @@ export default function LibraryPartsPage() {
         (PDF and URL resources), or extracted directly from a PDF's embedded images -- independent of
         which product they came from, so you can find and reuse them when building something new.
         Star anything with the ⭐ button in Composer or Style Lab to add it here, or use "🔬 Extract
-        Images" on a product's page to pull out every embedded image automatically.
+        Images" on a product's page to pull out every embedded image automatically. Raw Separator
+        crops don't land here directly -- they wait in Needs Review until you've actually edited and
+        saved them in the Style Editor.
       </p>
+
+      <PendingReview userId={userId} />
 
       <div style={{ background: '#faf9f5', border: '1px solid #e3ddd0', borderRadius: 8, padding: 16, marginBottom: 28 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1c3557', margin: '0 0 12px' }}>
