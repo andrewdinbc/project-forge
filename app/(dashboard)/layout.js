@@ -37,6 +37,7 @@ const NAV = [
       { href: '/dashboard/asset-modifier', label: '🖌 Style Editor' },
       { href: '/dashboard/content-editor', label: '📖 Content Editor' },
       { href: '/dashboard/schema-lab', label: '🧬 Schema Editor' },
+      { href: '/dashboard/inb-generator', label: '📓 Notebook Generator' },
     ],
   },
   {
