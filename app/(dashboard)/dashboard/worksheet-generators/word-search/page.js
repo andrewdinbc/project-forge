@@ -13,7 +13,20 @@ export default function WordSearchPage() {
   const [msg, setMsg] = useState(null)
   const [fileUrl, setFileUrl] = useState(null)
 
-  useEffect(() => { getCurrentUser().then((u) => u && setUserId(u.id)) }, [])
+  useEffect(() => {
+    getCurrentUser().then((u) => u && setUserId(u.id))
+    // Handoff from Spelling List Generator (or any future word-list source)
+    // -- same sessionStorage prefill pattern as Schema Lab -> Foldable Shapes.
+    try {
+      const raw = sessionStorage.getItem('wordListHandoff')
+      if (raw) {
+        const prefill = JSON.parse(raw)
+        if (Array.isArray(prefill.words) && prefill.words.length) setWords(prefill.words.join('\n'))
+        if (prefill.title) setTitle(prefill.title)
+        sessionStorage.removeItem('wordListHandoff')
+      }
+    } catch {}
+  }, [])
 
   async function generate() {
     setGenerating(true); setMsg(null); setFileUrl(null)
