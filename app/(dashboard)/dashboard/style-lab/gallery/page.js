@@ -55,6 +55,7 @@ export default function GalleryPage() {
 
   function selectLayer(layerKey) {
     setSelectedLayer(layerKey)
+    setIndexByLayer((prev) => ({ ...prev, [layerKey]: 0 }))
   }
 
   async function loadPreview(resource) {
@@ -189,49 +190,57 @@ export default function GalleryPage() {
         </div>
       ) : (
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: '#fafafa' }}>
-            <button onClick={() => go(-1)} disabled={currentIndex === 0} style={{ fontSize: 18, border: 'none', background: 'none', cursor: currentIndex === 0 ? 'default' : 'pointer', opacity: currentIndex === 0 ? 0.3 : 1 }}>←</button>
-            <span style={{ fontSize: 12, color: '#666' }}>{currentIndex + 1} of {currentList.length} -- {activeLayerMeta?.label}</span>
-            <button onClick={() => go(1)} disabled={currentIndex >= currentList.length - 1} style={{ fontSize: 18, border: 'none', background: 'none', cursor: currentIndex >= currentList.length - 1 ? 'default' : 'pointer', opacity: currentIndex >= currentList.length - 1 ? 0.3 : 1 }}>→</button>
+          {/* Prominent top nav -- per Aj: "right and left arrow at the top as the
+              means for moving from one item to the next." Large, high-contrast,
+              impossible to miss. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderBottom: `1px solid ${C.border}`, background: C.navy }}>
+            <button
+              onClick={() => go(-1)} disabled={currentIndex === 0}
+              style={{ fontSize: 22, lineHeight: 1, border: 'none', background: 'none', color: '#fff', cursor: currentIndex === 0 ? 'default' : 'pointer', opacity: currentIndex === 0 ? 0.3 : 1, padding: '4px 16px' }}
+            >←</button>
+            <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>{activeLayerMeta?.label} — {currentIndex + 1} of {currentList.length}</span>
+            <button
+              onClick={() => go(1)} disabled={currentIndex >= currentList.length - 1}
+              style={{ fontSize: 22, lineHeight: 1, border: 'none', background: 'none', color: '#fff', cursor: currentIndex >= currentList.length - 1 ? 'default' : 'pointer', opacity: currentIndex >= currentList.length - 1 ? 0.3 : 1, padding: '4px 16px' }}
+            >→</button>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 360px', minHeight: 320, background: '#f7f5f0', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-              {preview?.loading && <p style={{ fontSize: 12, color: '#888' }}>Rendering preview…</p>}
-              {preview?.error && <p style={{ fontSize: 12, color: C.red }}>{preview.error}</p>}
-              {preview?.imageUrl && <img src={preview.imageUrl} alt={current.title} style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 6, boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }} />}
-              {!preview && current?.source_type === 'url' && <p style={{ fontSize: 12, color: '#999' }}>URL resource -- no page image to preview.</p>}
-            </div>
-            <div style={{ flex: '1 1 320px', padding: 20 }}>
-              <p style={{ fontSize: 15, fontWeight: 700, color: C.navy, margin: '0 0 4px' }}>{current?.title}</p>
-              {current?.origin === 'tpt_purchase' && (
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '1px 6px' }}>TPT PURCHASE</span>
-              )}
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{activeLayerMeta?.label}</div>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#444', lineHeight: 1.6 }}>
-                  {(current?.layer_notes?.[selectedLayer] || []).filter((i) => i.included).map((item) => (
-                    <li key={item.id}>{item.text}</li>
-                  ))}
-                </ul>
-              </div>
+          {/* Visual, maximized -- this is the whole point of browsing for
+              inspiration, per Aj: "Visual Layer maximized naturally." */}
+          <div style={{ minHeight: 560, background: '#2b2b2b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            {preview?.loading && <p style={{ fontSize: 12, color: '#ccc' }}>Rendering preview…</p>}
+            {preview?.error && <p style={{ fontSize: 12, color: '#ff8080' }}>{preview.error}</p>}
+            {preview?.imageUrl && <img src={preview.imageUrl} alt={current.title} style={{ maxWidth: '100%', maxHeight: 700, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }} />}
+            {!preview && current?.source_type === 'url' && <p style={{ fontSize: 12, color: '#ccc' }}>URL resource -- no page image to preview.</p>}
+          </div>
 
-              <button
-                onClick={() => toggleProcessing(current)}
-                disabled={processingBusyId === current?.id}
-                style={{
-                  marginTop: 18, width: '100%', padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                  cursor: processingBusyId === current?.id ? 'default' : 'pointer',
-                  background: current?.marked_for_processing ? '#eef6f0' : C.gold,
-                  color: current?.marked_for_processing ? C.green : '#fff',
-                  border: current?.marked_for_processing ? `1px solid ${C.green}` : 'none',
-                }}
-              >
-                {current?.marked_for_processing ? '✓ In Visual Layer Processing' : '🖼 Add to Visual Layer Processing'}
-              </button>
-              <a href="/dashboard/style-lab" style={{ display: 'block', textAlign: 'center', fontSize: 11, color: '#888', marginTop: 8 }}>
-                Open full resource in Style Lab →
-              </a>
+          {/* Text, minimized -- a slim compact strip, not a competing panel.
+              Per Aj: "Live view text minimized naturally." */}
+          <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, background: '#fafafa' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: C.navy, margin: 0 }}>{current?.title}</p>
+              {current?.origin === 'tpt_purchase' && (
+                <span style={{ fontSize: 8, fontWeight: 700, color: '#7a3c8a', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 4, padding: '1px 5px' }}>TPT PURCHASE</span>
+              )}
+              <span style={{ fontSize: 10, color: '#aaa' }}>
+                {(current?.layer_notes?.[selectedLayer] || []).filter((i) => i.included).map((i) => i.text).join(' · ')}
+              </span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+                <a href="/dashboard/style-lab" style={{ fontSize: 10, color: '#888' }}>Open in Style Lab →</a>
+                <button
+                  onClick={() => toggleProcessing(current)}
+                  disabled={processingBusyId === current?.id}
+                  style={{
+                    padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                    cursor: processingBusyId === current?.id ? 'default' : 'pointer',
+                    background: current?.marked_for_processing ? '#eef6f0' : C.gold,
+                    color: current?.marked_for_processing ? C.green : '#fff',
+                    border: current?.marked_for_processing ? `1px solid ${C.green}` : 'none',
+                  }}
+                >
+                  {current?.marked_for_processing ? '✓ In Processing' : '🖼 Add to Processing'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
