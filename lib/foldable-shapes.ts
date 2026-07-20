@@ -110,6 +110,26 @@ export const FOLDABLE_SHAPES = [
     defaultCount: 4,
     matchKeywords: ['accordion', 'flip book', 'mini-booklet', 'mini book', 'sequential', 'z-fold', 'zigzag', 'booklet'],
   },
+  {
+    key: 'card-grid',
+    name: 'Task Card Grid',
+    description: 'A print-and-cut-apart grid of self-contained numbered cards, each with a prompt and a question. No fold at all -- the first shape in this library built for a print-once, reuse-forever genre (Task Cards) rather than an assemble-once notebook/lapbook piece. Confirmed against 4 cross-seller task card products.',
+    mechanic: 'print-and-cut',
+    minCount: 4,
+    maxCount: 8,
+    defaultCount: 6,
+    matchKeywords: ['task card', 'task cards', 'numbered card', 'self-contained prompt'],
+  },
+  {
+    key: 'recording-sheet',
+    name: 'Recording Sheet',
+    description: 'A numbered grid of blank response lines matching a task card set 1-for-1, so students log answers here instead of writing on the (reusable/laminated) cards themselves.',
+    mechanic: 'text-only',
+    minCount: 4,
+    maxCount: 8,
+    defaultCount: 6,
+    matchKeywords: ['recording sheet', 'response sheet', 'answer sheet', 'numbered blank', 'student response'],
+  },
 ];
 
 const BLACK = rgb(0, 0, 0);
@@ -623,4 +643,98 @@ export function drawAccordionBooklet(page: any, opts: {
   }
 
   page.drawText('Cut out the whole strip. Fold each crease in the alternating direction shown (mountain/valley) to form a small flip-through booklet.', { x, y: y - 14, size: 8, font, color: GRAY });
+}
+
+// Task Card Grid (Aj, 2026-07-20): the first shape in this library that
+// isn't a foldable at all -- no cut/fold lines, just a print-and-cut-apart
+// grid of self-contained numbered cards. Built off real analysis of 4
+// cross-seller task card products (French Frenzy, Getting Nerdy LLC, and
+// two others) -- every one of them uses this exact grid-of-numbered-cards
+// mechanic regardless of subject. Cut lines are dashed here (scissors,
+// not a fold) rather than the solid "cut" convention used elsewhere in
+// this file, since nothing about this shape is ever folded.
+export function drawTaskCardGrid(page: any, opts: {
+  x: number; y: number; width: number; height: number;
+  count: number; labels: string[]; contents: string[];
+  font: any; boldFont: any;
+}) {
+  const { x, y, width, height, count, labels, contents, font, boldFont } = opts;
+  const cols = count <= 4 ? 2 : 3;
+  const rows = Math.ceil(count / cols);
+  const cellW = width / cols;
+  const cellH = height / rows;
+
+  for (let i = 0; i < count; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = x + col * cellW;
+    const cy = y + height - (row + 1) * cellH;
+
+    drawDashedLine(page, { x: cx, y: cy }, { x: cx + cellW, y: cy }, { thickness: 1, dash: 5, gap: 3, color: GRAY });
+    drawDashedLine(page, { x: cx, y: cy }, { x: cx, y: cy + cellH }, { thickness: 1, dash: 5, gap: 3, color: GRAY });
+    page.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, borderColor: GRAY, borderWidth: 0.75 });
+
+    const num = String(i + 1);
+    const badgeR = 9;
+    page.drawEllipse({ x: cx + 14, y: cy + cellH - 14, xScale: badgeR, yScale: badgeR, borderColor: BLACK, borderWidth: 1 });
+    const numW = boldFont.widthOfTextAtSize(num, 9);
+    page.drawText(num, { x: cx + 14 - numW / 2, y: cy + cellH - 18, size: 9, font: boldFont, color: BLACK });
+
+    const padX = 10;
+    const innerW = cellW - padX * 2;
+    const promptText = labels[i] || `Card ${i + 1}`;
+    const { lines: promptLines, size: promptSize } = fitText(promptText, font, [9, 8, 7], innerW, 5);
+    let ty = cy + cellH - 34;
+    for (const line of promptLines) {
+      page.drawText(line, { x: cx + padX, y: ty, size: promptSize, font, color: BLACK });
+      ty -= promptSize + 2;
+    }
+    const questionText = contents[i] || '';
+    const { lines: qLines, size: qSize } = fitText(questionText, boldFont, [8, 7], innerW, 3);
+    ty -= 4;
+    for (const line of qLines) {
+      if (ty < cy + 6) break;
+      page.drawText(line, { x: cx + padX, y: ty, size: qSize, font: boldFont, color: BLACK });
+      ty -= qSize + 2;
+    }
+  }
+
+  page.drawText('Print, laminate if reusing, and cut apart along the dashed lines.', { x, y: y - 14, size: 8, font, color: GRAY });
+}
+
+// Recording Sheet: a numbered grid of blank response lines matching a task
+// card set 1-for-1 -- students work through the cards independently (in
+// any order, e.g. at a center) and log answers here instead of writing on
+// the cards themselves, so the same reusable/laminated card set works
+// across many students and years.
+export function drawRecordingSheet(page: any, opts: {
+  x: number; y: number; width: number; height: number;
+  count: number; labels: string[]; contents: string[];
+  font: any; boldFont: any;
+}) {
+  const { x, y, width, height, count, labels, font, boldFont } = opts;
+  page.drawText('Name: _______________________', { x, y: y + height - 10, size: 10, font, color: BLACK });
+  const cols = 2;
+  const rows = Math.ceil(count / cols);
+  const colW = width / cols;
+  const rowH = Math.min(36, (height - 30) / rows);
+
+  for (let i = 0; i < count; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = x + col * colW;
+    const cy = y + height - 40 - row * rowH;
+
+    const num = `${i + 1}.`;
+    page.drawText(num, { x: cx, y: cy, size: 10, font: boldFont, color: BLACK });
+    const label = labels[i] || '';
+    if (label) {
+      const lw = font.widthOfTextAtSize(label, 7);
+      page.drawText(label, { x: cx + 18, y: cy + 9, size: 7, font, color: GRAY });
+      void lw;
+    }
+    page.drawLine({ start: { x: cx + 18, y: cy - 2 }, end: { x: cx + colW - 12, y: cy - 2 }, thickness: 0.75, color: BLACK });
+  }
+
+  page.drawText('Answer each numbered task card in the matching space above. This sheet is reusable across students -- the cards never get written on.', { x, y: y - 14, size: 8, font, color: GRAY });
 }
