@@ -42,7 +42,18 @@ const admin: any = supabaseAdmin;
 const LINE_ART_STYLE_SUFFIX =
   ', black and white line art, clean bold outlines, no shading, no color fill, no gradients, simple coloring-book style illustration, plain white background, designed to be colored in';
 
-async function generateWithGemini(prompt: string, referenceImageBase64?: string): Promise<Buffer> {
+// Added 2026-07-20 for library-priming (Aj: "make 40 kid like icons that
+// might be on a TPT product"): full-color flat clip-art icons need the
+// OPPOSITE treatment from line art -- bold color, not absence of it.
+const FLAT_COLOR_ICON_SUFFIX =
+  ', flat vector clip art style, bold black outlines, bright cheerful saturated colors, simple friendly cartoon illustration, plain white background, no gradients, no shading, designed for children\'s educational materials';
+
+const STYLE_SUFFIXES: Record<string, string> = {
+  line_art: LINE_ART_STYLE_SUFFIX,
+  flat_color_icon: FLAT_COLOR_ICON_SUFFIX,
+};
+
+async function generateWithGemini(prompt: string, referenceImageBase64?: string, styleSuffix: string = LINE_ART_STYLE_SUFFIX): Promise<Buffer> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set in this project\'s environment variables');
 
@@ -52,9 +63,9 @@ async function generateWithGemini(prompt: string, referenceImageBase64?: string)
     const mimeType = match?.[1] || 'image/png';
     const data = match?.[2] || referenceImageBase64;
     parts.push({ inline_data: { mime_type: mimeType, data } });
-    parts.push({ text: `Using the attached reference image as a style/content guide, generate: ${prompt}${LINE_ART_STYLE_SUFFIX}` });
+    parts.push({ text: `Using the attached reference image as a style/content guide, generate: ${prompt}${styleSuffix}` });
   } else {
-    parts.push({ text: `${prompt}${LINE_ART_STYLE_SUFFIX}` });
+    parts.push({ text: `${prompt}${styleSuffix}` });
   }
 
   const res = await fetch(
@@ -77,11 +88,11 @@ async function generateWithGemini(prompt: string, referenceImageBase64?: string)
   return Buffer.from(inline.data, 'base64');
 }
 
-async function generateWithRecraft(prompt: string, referenceImageBase64?: string): Promise<Buffer> {
+async function generateWithRecraft(prompt: string, referenceImageBase64?: string, styleSuffix: string = LINE_ART_STYLE_SUFFIX): Promise<Buffer> {
   const apiKey = process.env.RECRAFT_API_KEY;
   if (!apiKey) throw new Error('RECRAFT_API_KEY is not set in this project\'s environment variables');
 
-  const fullPrompt = `${prompt}${LINE_ART_STYLE_SUFFIX}`;
+  const fullPrompt = `${prompt}${styleSuffix}`;
   let imageUrl: string | undefined;
 
   if (referenceImageBase64) {
@@ -161,11 +172,12 @@ function sniffImageType(buffer: Buffer): { contentType: string; ext: string } {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, prompt, provider, referenceImage } = body as {
+    const { userId, prompt, provider, referenceImage, style } = body as {
       userId: string;
       prompt: string;
       provider: 'gemini' | 'recraft';
       referenceImage?: string; // data URL (data:image/png;base64,...)
+      style?: 'line_art' | 'flat_color_icon';
     };
 
     if (!userId || !prompt?.trim() || !provider) {
@@ -174,11 +186,12 @@ export async function POST(request: NextRequest) {
     if (provider !== 'gemini' && provider !== 'recraft') {
       return NextResponse.json({ error: 'provider must be "gemini" or "recraft"' }, { status: 400 });
     }
+    const styleSuffix = STYLE_SUFFIXES[style || 'line_art'] || LINE_ART_STYLE_SUFFIX;
 
     const buffer =
       provider === 'gemini'
-        ? await generateWithGemini(prompt, referenceImage)
-        : await generateWithRecraft(prompt, referenceImage);
+        ? await generateWithGemini(prompt, referenceImage, styleSuffix)
+        : await generateWithRecraft(prompt, referenceImage, styleSuffix);
 
     // Store with the true type (e.g. Recraft vector output is SVG, not PNG) so
     // the browser can actually render it — see sniffImageType above.
