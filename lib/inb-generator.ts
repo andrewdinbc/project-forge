@@ -21,8 +21,19 @@ import { matchComponentToShape, ShapeMatch } from './schema-shape-match';
 //              those describe the ORIGINAL seller's TPT listing, not
 //              anything this generator produces)
 
-const AUTO_KEYWORDS = ['title/cover page', 'cover/title page', 'title page', 'cover page', 'table of contents', 'assembly direction', 'directions page'];
 const SKIP_KEYWORDS = ['terms of use', 'credits', 'promotional', 'resource link'];
+// Phrase substrings still work fine for these (assembly direction[s], table
+// of contents rarely appear in any other word order in practice).
+const AUTO_PHRASE_KEYWORDS = ['table of contents', 'assembly direction', 'directions page'];
+// Cover/title pages get named in every word order a seller or synthesized
+// schema might pick -- "Title/Cover Page", "Cover/Title Page", "Title Page",
+// "Cover Page" -- so a fixed phrase substring is the wrong tool (bit by this
+// exact case: "Cover/Title Page" contains neither "cover page" nor "title
+// page" as a substring because of the slash). Word-presence is more robust:
+// treat it as auto whenever ("cover" or "title") AND "page" both appear.
+function isCoverOrTitlePage(text: string): boolean {
+  return /\bpage\b/.test(text) && (/\bcover\b/.test(text) || /\btitle\b/.test(text));
+}
 
 export type ComponentKind = 'shape' | 'text' | 'auto' | 'skip';
 
@@ -37,7 +48,7 @@ export function classifyComponents(components: { name: string; purpose: string }
   return components.map((c) => {
     const text = `${c.name} ${c.purpose}`.toLowerCase();
     if (SKIP_KEYWORDS.some((k) => text.includes(k))) return { ...c, kind: 'skip' as const, shape: null };
-    if (AUTO_KEYWORDS.some((k) => text.includes(k))) return { ...c, kind: 'auto' as const, shape: null };
+    if (AUTO_PHRASE_KEYWORDS.some((k) => text.includes(k)) || isCoverOrTitlePage(text)) return { ...c, kind: 'auto' as const, shape: null };
     const shape = matchComponentToShape(c.name, c.purpose);
     if (shape) return { ...c, kind: 'shape' as const, shape };
     return { ...c, kind: 'text' as const, shape: null };
