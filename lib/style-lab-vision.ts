@@ -15,7 +15,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // for the same page are free.
 
 // Coarse color-quantized palette straight from pixels (exact, free).
-function extractPalette(canvas: any) {
+export function extractPalette(canvas: any) {
   const ctx = canvas.getContext('2d');
   const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const step = Math.max(1, Math.floor((width * height) / 40000));

@@ -35,7 +35,7 @@ import { getCurrentUser } from '@/lib/auth';
 // they can be built properly rather than bolted on.
 
 const CATEGORY_BADGE_LABELS = {
-  border: '🖼 Border', section_header: '📑 Section Header', font: '🔤 Font', icon_illustration: '🎨 Icon & Illustration',
+  border: '🖼 Border', section_header: '📑 Section Header', font: '🔤 Font', icon_illustration: '🎨 Icon & Illustration', color_palette: '🌈 Color Palette',
 };
 
 function AssetModifierInner() {
@@ -79,6 +79,11 @@ function AssetModifierInner() {
   const [title, setTitle] = useState(initialTitle);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(null);
+  const [savedPart, setSavedPart] = useState(null); // Aj, 2026-07-19: "make 10 varieties" -- needs the just-saved part's id + category
+  const [varietyPrompt, setVarietyPrompt] = useState('');
+  const [varietyCount, setVarietyCount] = useState(10);
+  const [generatingVarieties, setGeneratingVarieties] = useState(false);
+  const [varietyMsg, setVarietyMsg] = useState(null);
   const [aiInstruction, setAiInstruction] = useState(initialAiInstruction);
   const [applyingAI, setApplyingAI] = useState(false);
   const [aiMsg, setAiMsg] = useState(null);
@@ -451,7 +456,7 @@ function AssetModifierInner() {
   // ---------- Save ----------
   async function saveAsset() {
     if (!userId) return;
-    setSaving(true); setSavedMsg(null);
+    setSaving(true); setSavedMsg(null); setSavedPart(null); setVarietyMsg(null)
     try {
       const canvas = fCanvasRef.current;
       canvas.discardActiveObject();
@@ -464,10 +469,36 @@ function AssetModifierInner() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Save failed');
       setSavedMsg('Saved to Parts Library ✓');
+      setSavedPart(d.part);
     } catch (e) {
       setSavedMsg(e.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // "Make N Varieties" (Aj, 2026-07-19): "I want to be able to say 'Make 10
+  // varieties' so I can ensure variety of uniquely my own assets to call
+  // from." Runs right after a save, using the just-saved asset as the style
+  // reference for the existing generate-matching-set endpoint (FLUX
+  // Kontext) -- results inherit this asset's category, so 10 border
+  // varieties land in the Border library, not a generic bucket.
+  async function generateVarieties() {
+    if (!savedPart || !varietyPrompt.trim() || generatingVarieties) return
+    setGeneratingVarieties(true); setVarietyMsg(null)
+    try {
+      const res = await fetch('/api/style-lab/generate-matching-set', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, partId: savedPart.id, prompt: varietyPrompt.trim(), count: varietyCount }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || 'Generation failed')
+      const note = d.failures?.length ? ` (${d.failures.length} failed -- try again for those)` : ''
+      setVarietyMsg(`✓ Added ${d.savedCount} of ${d.requested} to Parts Library${note}`)
+    } catch (e) {
+      setVarietyMsg(e.message)
+    } finally {
+      setGeneratingVarieties(false)
     }
   }
 
@@ -505,6 +536,31 @@ function AssetModifierInner() {
         {savedMsg && <span style={{ fontSize: 12, color: savedMsg.startsWith('Saved') ? '#2f6b41' : '#a33' }}>{savedMsg}</span>}
         <a href="/dashboard/library-parts" style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>← Parts Library</a>
       </div>
+
+      {savedPart && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#7a3c8a' }}>✨ Make varieties of this:</span>
+          <input
+            type="text" value={varietyPrompt} onChange={(e) => setVarietyPrompt(e.target.value)}
+            placeholder='e.g. "same style, different color accents"'
+            disabled={generatingVarieties}
+            style={{ flex: 1, minWidth: 200, fontSize: 12, padding: '5px 8px', border: '1px solid #d9b8e8', borderRadius: 4 }}
+          />
+          <input
+            type="number" min={1} max={12} value={varietyCount}
+            onChange={(e) => setVarietyCount(Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 10)))}
+            disabled={generatingVarieties}
+            style={{ width: 48, fontSize: 12, padding: '5px 6px', border: '1px solid #d9b8e8', borderRadius: 4, textAlign: 'center' }}
+          />
+          <button
+            onClick={generateVarieties} disabled={generatingVarieties || !varietyPrompt.trim()}
+            style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 5, padding: '5px 14px', cursor: generatingVarieties || !varietyPrompt.trim() ? 'default' : 'pointer', opacity: generatingVarieties || !varietyPrompt.trim() ? 0.6 : 1 }}
+          >
+            {generatingVarieties ? 'Generating…' : `Make ${varietyCount}`}
+          </button>
+          {varietyMsg && <span style={{ fontSize: 11, color: varietyMsg.startsWith('✓') ? '#2f6b41' : '#a33', width: '100%' }}>{varietyMsg}</span>}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* LEFT: tools */}

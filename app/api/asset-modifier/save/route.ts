@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     // & Illustration "editors" are all this same Asset Modifier, launched
     // with a category hint so what gets saved lands in the right Parts
     // Library slot instead of the generic 'asset_modifier' bucket.
-    const validCategories = new Set(['border', 'section_header', 'font', 'icon_illustration']);
+    const validCategories = new Set(['border', 'section_header', 'font', 'icon_illustration', 'color_palette']);
     const resolvedCategory = validCategories.has(category) ? category : 'asset_modifier';
 
     const { data: inserted, error: insErr } = await admin

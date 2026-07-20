@@ -90,6 +90,12 @@ export default function DashboardLayout({ children }) {
             🧩 Product Builder
           </Link>
           <Link
+            href="/dashboard/separator"
+            className="block pl-8 pr-4 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 text-sm transition-colors"
+          >
+            ✂️ Separator
+          </Link>
+          <Link
             href="/dashboard/spacing-alignment-editor"
             className="block pl-8 pr-4 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 text-sm transition-colors"
           >

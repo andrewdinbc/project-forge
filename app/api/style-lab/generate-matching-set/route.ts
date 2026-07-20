@@ -96,12 +96,20 @@ export async function POST(request: NextRequest) {
 
     const { data: sourcePart, error: srcErr } = await admin
       .from('library_parts')
-      .select('id, title, file_url')
+      .select('id, title, file_url, category')
       .eq('id', partId)
       .eq('user_id', userId)
       .single();
     if (srcErr || !sourcePart) return NextResponse.json({ error: 'Source part not found' }, { status: 404 });
     if (!sourcePart.file_url) return NextResponse.json({ error: 'Source part has no reference image' }, { status: 400 });
+
+    // Per Aj, 2026-07-19: "make 10 varieties" of a Border should stay a
+    // Border in Parts Library, not fall into a separate generic bucket --
+    // inherit the source's category (image-based style categories only;
+    // 'generated_set' remains the fallback for anything else, e.g. a plain
+    // extracted image with no specific category).
+    const INHERITABLE = new Set(['border', 'section_header', 'icon_illustration', 'color_palette']);
+    const resultCategory = INHERITABLE.has(sourcePart.category) ? sourcePart.category : 'generated_set';
 
     // Fire the batch concurrently -- each call is an independent Replicate
     // prediction, varied by seed so the set isn't 6 identical images.
@@ -131,7 +139,7 @@ export async function POST(request: NextRequest) {
             kind: 'image',
             source_id: `generated:${partId}:${Date.now()}-${i}`,
             title: `${sourcePart.title} — generated ${i + 1}`,
-            category: 'generated_set',
+            category: resultCategory,
             notes: `Generated from "${sourcePart.title}" (part ${partId}) · prompt: ${prompt}`,
             file_url: urlData.publicUrl,
           })

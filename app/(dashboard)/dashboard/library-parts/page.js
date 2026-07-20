@@ -18,7 +18,7 @@ import { STYLE_CATEGORIES } from '@/lib/product-builder-categories';
 // Illustration) at the top, pulled out of the generic Extracted
 // Images / Visual & Content Components buckets below so nothing shows up
 // twice.
-const STYLE_CATEGORY_KEYS = new Set(['border', 'section_header', 'font', 'font_reference', 'spacing_alignment', 'icon_illustration']);
+const STYLE_CATEGORY_KEYS = new Set(['border', 'section_header', 'font', 'font_reference', 'spacing_alignment', 'icon_illustration', 'color_palette']);
 
 function readPreset(notes) {
   try { return JSON.parse(notes); } catch { return null; }
@@ -27,7 +27,7 @@ function readPreset(notes) {
 // One dedicated library for a single style category -- image grid for the
 // four visual ones, a text list for Spacing & Alignment (a layout rule has
 // no picture to show).
-function StyleLibrarySection({ cat, items, busyId, onRemove }) {
+function StyleLibrarySection({ cat, items, busyId, onRemove, genFor, genPrompt, setGenPrompt, genCount, setGenCount, generating, genMsg, onToggleGen, onGenerate }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -87,14 +87,42 @@ function StyleLibrarySection({ cat, items, busyId, onRemove }) {
                     {busyId === p.id ? '…' : 'Remove'}
                   </button>
                   {p.file_url && (
-                    <a
-                      href={`/dashboard/asset-modifier?${new URLSearchParams({ assetUrl: p.file_url, title: p.title || 'Asset', sourcePartId: p.id, category: cat.key }).toString()}`}
-                      style={{ fontSize: 9, color: '#7a3c8a', textDecoration: 'underline' }}
-                    >
-                      Edit
-                    </a>
+                    <>
+                      <a
+                        href={`/dashboard/asset-modifier?${new URLSearchParams({ assetUrl: p.file_url, title: p.title || 'Asset', sourcePartId: p.id, category: cat.key }).toString()}`}
+                        style={{ fontSize: 9, color: '#7a3c8a', textDecoration: 'underline' }}
+                      >
+                        Edit
+                      </a>
+                      <button onClick={() => onToggleGen(p.id)} style={{ fontSize: 9, color: '#7a3c8a', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                        ✨ Varieties
+                      </button>
+                    </>
                   )}
                 </div>
+                {genFor === p.id && (
+                  <div style={{ marginTop: 6, padding: 6, background: '#f5eafa', border: '1px solid #d9b8e8', borderRadius: 6 }}>
+                    <input
+                      type="text" value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)}
+                      placeholder="e.g. different color accents"
+                      style={{ width: '100%', fontSize: 10, padding: '4px 6px', border: '1px solid #d9b8e8', borderRadius: 4, boxSizing: 'border-box' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <input
+                        type="number" min={1} max={12} value={genCount}
+                        onChange={(e) => setGenCount(Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 6)))}
+                        style={{ width: 36, fontSize: 10, padding: '2px 4px', border: '1px solid #d9b8e8', borderRadius: 4 }}
+                      />
+                      <button
+                        onClick={() => onGenerate(p)} disabled={generating || !genPrompt.trim()}
+                        style={{ fontSize: 10, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: generating || !genPrompt.trim() ? 'default' : 'pointer', opacity: generating || !genPrompt.trim() ? 0.6 : 1 }}
+                      >
+                        {generating ? 'Generating…' : 'Generate'}
+                      </button>
+                    </div>
+                    {genMsg && <p style={{ fontSize: 9, color: genMsg.startsWith('Added') ? '#2f6b41' : '#a33', margin: '4px 0 0' }}>{genMsg}</p>}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -166,6 +194,12 @@ export default function LibraryPartsPage() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  function toggleGen(id) {
+    setGenFor((prev) => (prev === id ? null : id));
+    setGenMsg(null);
+    setGenPrompt('');
   }
 
   if (loading) return <div style={{ padding: 40 }}>Loading…</div>;
@@ -270,7 +304,14 @@ export default function LibraryPartsPage() {
         {STYLE_CATEGORIES.map((cat) => {
           const keys = cat.key === 'font' ? ['font', 'font_reference'] : [cat.key]
           const items = parts.filter((p) => keys.includes(p.category))
-          return <StyleLibrarySection key={cat.key} cat={cat} items={items} busyId={busyId} onRemove={remove} />
+          return (
+            <StyleLibrarySection
+              key={cat.key} cat={cat} items={items} busyId={busyId} onRemove={remove}
+              genFor={genFor} genPrompt={genPrompt} setGenPrompt={setGenPrompt}
+              genCount={genCount} setGenCount={setGenCount} generating={generating} genMsg={genMsg}
+              onToggleGen={toggleGen} onGenerate={generateSet}
+            />
+          )
         })}
       </div>
 
