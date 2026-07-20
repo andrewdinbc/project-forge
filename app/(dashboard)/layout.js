@@ -2,13 +2,95 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { getCurrentUser, signOut } from '@/lib/auth';
+
+// Sidebar structure (Aj, 2026-07-19): "main buttons, and when I click them
+// they open to the suite within it." Standalone pages stay flat links;
+// related pages are grouped under one clickable suite header that expands
+// to reveal them. Adding a new page under an existing suite = one line
+// here; a genuinely new suite = one new group entry.
+const NAV = [
+  { type: 'link', href: '/dashboard', label: '📊 Dashboard' },
+  {
+    type: 'suite', key: 'products', label: '📁 Products',
+    items: [
+      { href: '/dashboard/products', label: '📁 All Products' },
+      { href: '/dashboard/bundles', label: '📦 Bundles' },
+      { href: '/dashboard/composer', label: '🧬 Composer' },
+    ],
+  },
+  {
+    type: 'suite', key: 'product-builder', label: '🧩 Product Builder',
+    items: [
+      { href: '/dashboard/product-builder', label: '🧩 Product Builder' },
+      { href: '/dashboard/separator', label: '✂️ Separator' },
+      { href: '/dashboard/spacing-alignment-editor', label: '📐 Spacing & Alignment Editor' },
+    ],
+  },
+  {
+    type: 'suite', key: 'style-lab', label: '🎨 Style Lab',
+    items: [
+      { href: '/dashboard/style-lab', label: '🎨 Style Lab' },
+      { href: '/dashboard/asset-modifier', label: '🖌 Style Editor' },
+      { href: '/dashboard/content-editor', label: '📖 Content Editor' },
+      { href: '/dashboard/schema-lab', label: '🧬 Schema Editor' },
+    ],
+  },
+  {
+    type: 'suite', key: 'parts-library', label: '📦 Parts Library',
+    items: [
+      { href: '/dashboard/library-parts', label: '📦 Parts Library' },
+      { href: '/dashboard/design-assets', label: '🎨 Design Assets' },
+      { href: '/dashboard/foldable-shapes', label: '🗂 Foldable Shapes' },
+    ],
+  },
+  { type: 'link', href: '/dashboard/from-lesson-planner', label: '📚 From Lesson Planner' },
+];
+
+// Which suite (if any) contains the given path -- used to auto-expand the
+// right one on load/navigation, so landing on a sub-page via a direct link
+// or refresh doesn't leave the sidebar looking empty.
+function suiteKeyForPath(pathname) {
+  for (const entry of NAV) {
+    if (entry.type === 'suite' && entry.items.some((i) => pathname === i.href || pathname.startsWith(i.href + '/'))) {
+      return entry.key;
+    }
+  }
+  return null;
+}
+
+function NavLink({ href, label, pathname, indent }) {
+  const active = pathname === href || pathname.startsWith(href + '/');
+  return (
+    <Link
+      href={href}
+      className={
+        (indent ? 'block pl-8 pr-4 py-1.5 text-sm ' : 'block px-4 py-2 font-medium ') +
+        'rounded-lg transition-colors ' +
+        (active ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100')
+      }
+    >
+      {label}
+    </Link>
+  );
+}
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [openSuite, setOpenSuite] = useState(() => suiteKeyForPath(pathname));
+
+  // Keep the sidebar in sync with whatever suite the current page belongs
+  // to, without fighting the person if they've manually opened a different
+  // suite to browse (only force-open on an actual navigation, never close
+  // one they opened on purpose).
+  useEffect(() => {
+    const active = suiteKeyForPath(pathname);
+    if (active) setOpenSuite(active);
+  }, [pathname]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -64,97 +146,31 @@ export default function DashboardLayout({ children }) {
           <p className="text-sm text-slate-600 mt-1">TPT Bundle Creator</p>
         </div>
 
-        <nav className="p-4 space-y-2 flex-1 overflow-y-auto min-h-0">
-          <Link
-            href="/dashboard"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            📊 Dashboard
-          </Link>
-          <Link
-            href="/dashboard/products"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            📁 Products
-          </Link>
-          <Link
-            href="/dashboard/bundles"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            📦 Bundles
-          </Link>
-          <Link
-            href="/dashboard/product-builder"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🧩 Product Builder
-          </Link>
-          <Link
-            href="/dashboard/separator"
-            className="block pl-8 pr-4 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 text-sm transition-colors"
-          >
-            ✂️ Separator
-          </Link>
-          <Link
-            href="/dashboard/spacing-alignment-editor"
-            className="block pl-8 pr-4 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 text-sm transition-colors"
-          >
-            📐 Spacing & Alignment Editor
-          </Link>
-          <Link
-            href="/dashboard/composer"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🧬 Composer
-          </Link>
-          <Link
-            href="/dashboard/style-lab"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🎨 Style Lab
-          </Link>
-          <Link
-            href="/dashboard/asset-modifier"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🎨 Style Editor
-          </Link>
-          <Link
-            href="/dashboard/content-editor"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            📖 Content Editor
-          </Link>
-          <Link
-            href="/dashboard/schema-lab"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🧬 Schema Editor
-          </Link>
-          <Link
-            href="/dashboard/foldable-shapes"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🗂 Foldable Shapes
-          </Link>
-          <Link
-            href="/dashboard/from-lesson-planner"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            📚 From Lesson Planner
-          </Link>
-          <Link
-            href="/dashboard/design-assets"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            🎨 Design Assets
-          </Link>
-          <Link
-            href="/dashboard/library-parts"
-            className="block px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
-          >
-            📦 Parts Library
-          </Link>
+        <nav className="p-4 space-y-1 flex-1 overflow-y-auto min-h-0">
+          {NAV.map((entry) => {
+            if (entry.type === 'link') {
+              return <NavLink key={entry.href} href={entry.href} label={entry.label} pathname={pathname} />;
+            }
+            const isOpen = openSuite === entry.key;
+            return (
+              <div key={entry.key} className="pb-1">
+                <button
+                  onClick={() => setOpenSuite(isOpen ? null : entry.key)}
+                  className="w-full flex items-center justify-between px-4 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors"
+                >
+                  <span>{entry.label}</span>
+                  <span className="text-slate-400 text-xs">{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && (
+                  <div className="mt-1 space-y-1">
+                    {entry.items.map((item) => (
+                      <NavLink key={item.href} href={item.href} label={item.label} pathname={pathname} indent />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-slate-200 bg-white shrink-0">
@@ -180,4 +196,3 @@ export default function DashboardLayout({ children }) {
     </div>
   );
 }
-
