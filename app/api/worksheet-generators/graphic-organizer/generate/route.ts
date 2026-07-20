@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, uploadWorksheetPdf } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, loadBundleTheme, uploadWorksheetPdf } from '@/lib/worksheet-pdf';
 import { drawBoxesLayout, drawColumnsLayout, drawRadialLayout, drawVennLayout, drawChainLayout, drawQuadrantLayout, drawTreeLayout } from '@/lib/graphic-organizer-pdf';
 import { findOrganizer } from '@/lib/graphic-organizer-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -9,23 +9,24 @@ const admin: any = supabaseAdmin;
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, organizerKey, content, task, title } = (await request.json()) || {};
+    const { userId, organizerKey, content, task, title, bundleId } = (await request.json()) || {};
     if (!userId || !organizerKey) return NextResponse.json({ error: 'userId and organizerKey are required' }, { status: 400 });
     const tool = findOrganizer(organizerKey);
     if (!tool) return NextResponse.json({ error: 'Unknown organizer type' }, { status: 400 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || tool.label;
     const subtitle = task?.trim() ? `Topic: ${task.trim()}` : undefined;
-    const ctx = { doc, helv, helvBold, title: docTitle, subtitle };
+    const ctx = { doc, helv, helvBold, title: docTitle, subtitle, theme };
 
-    if (tool.layout === 'boxes') drawBoxesLayout(ctx, tool.slots, content);
-    else if (tool.layout === 'columns') drawColumnsLayout(ctx, tool.columns, content);
-    else if (tool.layout === 'radial') drawRadialLayout(ctx, tool.center, tool.slots, content);
-    else if (tool.layout === 'venn') drawVennLayout(ctx, tool.a, tool.b, tool.both, content);
-    else if (tool.layout === 'chain') drawChainLayout(ctx, tool.count, content);
-    else if (tool.layout === 'quadrant') drawQuadrantLayout(ctx, tool.center, tool.slots, content);
-    else if (tool.layout === 'tree') drawTreeLayout(ctx, tool.label.replace(/ \(.*\)/, ''), tool.levels, content);
+    if (tool.layout === 'boxes') await drawBoxesLayout(ctx, tool.slots, content);
+    else if (tool.layout === 'columns') await drawColumnsLayout(ctx, tool.columns, content);
+    else if (tool.layout === 'radial') await drawRadialLayout(ctx, tool.center, tool.slots, content);
+    else if (tool.layout === 'venn') await drawVennLayout(ctx, tool.a, tool.b, tool.both, content);
+    else if (tool.layout === 'chain') await drawChainLayout(ctx, tool.count, content);
+    else if (tool.layout === 'quadrant') await drawQuadrantLayout(ctx, tool.center, tool.slots, content);
+    else if (tool.layout === 'tree') await drawTreeLayout(ctx, tool.label.replace(/ \(.*\)/, ''), tool.levels, content);
     else return NextResponse.json({ error: `Unknown layout: ${tool.layout}` }, { status: 400 });
 
     const bytes = await doc.save();

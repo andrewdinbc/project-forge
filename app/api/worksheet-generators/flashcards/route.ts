@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, uploadWorksheetPdf, wrapLines, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, wrapLines, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -24,22 +24,24 @@ const COLORS: any = {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, words, color = 'navy', title } = (await request.json()) || {};
+    const { userId, words, color = 'navy', title, bundleId } = (await request.json()) || {};
     if (!userId || !words) return NextResponse.json({ error: 'userId and words are required' }, { status: 400 });
     const cards = parseLines(words);
     if (!cards.length) return NextResponse.json({ error: 'Enter at least one word' }, { status: 400 });
 
     const { doc, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const ink = COLORS[color] || COLORS.navy;
     const cols = 2, rows = 4, margin = 40;
     const cardW = (PAGE_W - margin * 2) / cols, cardH = (PAGE_H - margin * 2) / rows;
     const docTitle = title?.trim() || 'Flashcards';
 
-    const drawDeck = (getText: (c: any) => string | null) => {
+    const drawDeck = async (getText: (c: any) => string | null) => {
       let page: any = null;
-      cards.forEach((c, i) => {
+      for (let i = 0; i < cards.length; i++) {
+        const c = cards[i];
         const pos = i % (cols * rows);
-        if (pos === 0) page = doc.addPage([PAGE_W, PAGE_H]);
+        if (pos === 0) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); }
         const col = pos % cols, row = Math.floor(pos / cols);
         const x = margin + col * cardW, y = PAGE_H - margin - (row + 1) * cardH;
         page.drawRectangle({ x, y, width: cardW, height: cardH, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 1 });
@@ -54,12 +56,12 @@ export async function POST(request: NextRequest) {
             ty -= size + 4;
           }
         }
-      });
+      }
     };
 
-    drawDeck((c) => c.front);
+    await drawDeck((c) => c.front);
     const hasBacks = cards.some((c) => c.back);
-    if (hasBacks) drawDeck((c) => c.back || '');
+    if (hasBacks) await drawDeck((c) => c.back || '');
 
     const bytes = await doc.save();
     const fileUrl = await uploadWorksheetPdf(admin, userId, bytes, 'flashcards', `${docTitle}.pdf`);

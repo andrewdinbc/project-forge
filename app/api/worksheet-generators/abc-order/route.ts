@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -8,17 +8,18 @@ const admin: any = supabaseAdmin;
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, words, title } = (await request.json()) || {};
+    const { userId, words, title, bundleId } = (await request.json()) || {};
     if (!userId || !words) return NextResponse.json({ error: 'userId and words are required' }, { status: 400 });
     const list = String(words).split('\n').map((w: string) => w.trim()).filter(Boolean);
     if (list.length < 2) return NextResponse.json({ error: 'Enter at least 2 words' }, { status: 400 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'ABC Order';
     const scrambled = shuffle(list);
 
     // Page 1: cut-out word bank + numbered blanks to glue in order.
-    let page = addWorksheetPage(doc, helvBold, helv, docTitle, 'Cut out the words below, put them in ABC order, and glue them next to the matching number.');
+    let page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, 'Cut out the words below, put them in ABC order, and glue them next to the matching number.', theme);
     let y = PAGE_H - 150;
     const cols = 3, colW = (PAGE_W - 108) / cols;
     scrambled.forEach((w, i) => {
@@ -31,18 +32,18 @@ export async function POST(request: NextRequest) {
     });
     y -= Math.ceil(scrambled.length / cols) * 30 + 20;
 
-    if (y < 200) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+    if (y < 200) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
     page.drawText('Put them in ABC order:', { x: 54, y, size: 12, font: helvBold, color: NAVY });
     y -= 26;
     for (let i = 0; i < list.length; i++) {
-      if (y < 60) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+      if (y < 60) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
       page.drawText(`${i + 1}.`, { x: 54, y, size: 11, font: helv, color: INK });
       page.drawLine({ start: { x: 78, y: y - 3 }, end: { x: PAGE_W - 54, y: y - 3 }, thickness: 1, color: LINE });
       y -= 26;
     }
 
     // Answer key
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     const sorted = [...list].sort((a, b) => a.localeCompare(b));
     let ky = PAGE_H - 90;

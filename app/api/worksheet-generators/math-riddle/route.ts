@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -22,7 +22,7 @@ function problemFor(target: number) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, topic = '', grade = '', title } = (await request.json()) || {};
+    const { userId, topic = '', grade = '', title, bundleId } = (await request.json()) || {};
     if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
 
     const prompt = `Write one original, short, kid-friendly joke or riddle${grade ? ` for ${grade} students` : ''}${topic ? `, themed around: ${topic}` : ''}. The answer/punchline must be SHORT (2-4 words, letters only, no numbers or punctuation). Return ONLY JSON: {"question": "...", "answer": "PUNCHLINE IN CAPS"}`;
@@ -34,8 +34,9 @@ export async function POST(request: NextRequest) {
     if (!answer.trim()) return NextResponse.json({ error: 'Could not generate a riddle -- try again' }, { status: 500 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'Math Riddle';
-    const page = addWorksheetPage(doc, helvBold, helv, docTitle, 'Solve each problem, then use the key to decode the answer.');
+    const page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, 'Solve each problem, then use the key to decode the answer.', theme);
     let y = PAGE_H - 140;
 
     page.drawText(joke.question || 'Solve the riddle:', { x: 54, y, size: 12, font: helvBold, color: NAVY });
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     y -= 14;
     page.drawText('14=N 15=O 16=P 17=Q 18=R 19=S 20=T 21=U 22=V 23=W 24=X 25=Y 26=Z', { x: 54, y, size: 8, font: helv, color: NAVY });
 
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     keyPage.drawText(joke.question || '', { x: 54, y: PAGE_H - 90, size: 11, font: helv, color: INK });
     keyPage.drawText(answer, { x: 54, y: PAGE_H - 120, size: 14, font: helvBold, color: NAVY });

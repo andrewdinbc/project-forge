@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, wrapLines, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, wrapLines, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -16,7 +16,7 @@ const TYPE_TITLES: Record<string, string> = { brain_teaser: 'Brain Teasers', wha
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, type, count = 8, topic = '', grade = '', title } = (await request.json()) || {};
+    const { userId, type, count = 8, topic = '', grade = '', title, bundleId } = (await request.json()) || {};
     if (!userId || !type || !TYPE_PROMPTS[type]) return NextResponse.json({ error: 'userId and a valid type are required' }, { status: 400 });
     const n = Math.max(3, Math.min(15, parseInt(count, 10) || 8));
 
@@ -28,12 +28,14 @@ export async function POST(request: NextRequest) {
     if (!items.length) return NextResponse.json({ error: 'Could not generate puzzles -- try again' }, { status: 500 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || TYPE_TITLES[type];
-    let page = addWorksheetPage(doc, helvBold, helv, docTitle);
+    let page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, undefined, theme);
     let y = PAGE_H - 130;
 
-    items.forEach((item, i) => {
-      if (y < 100) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (y < 100) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
       if (type === 'analogy') {
         for (const line of wrapLines(`${i + 1}. ${item.prompt}`, helvBold, 12, PAGE_W - 108)) {
           page.drawText(line, { x: 54, y, size: 12, font: helvBold, color: INK }); y -= 17;
@@ -49,9 +51,9 @@ export async function POST(request: NextRequest) {
         page.drawLine({ start: { x: 70, y: y - 4 }, end: { x: PAGE_W - 54, y: y - 4 }, thickness: 0.75, color: LINE });
         y -= 26;
       }
-    });
+    }
 
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     let ky = PAGE_H - 90;
     items.forEach((item, i) => {

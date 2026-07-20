@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -18,15 +18,16 @@ function buildCipher() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, phrase, title } = (await request.json()) || {};
+    const { userId, phrase, title, bundleId } = (await request.json()) || {};
     if (!userId || !phrase || !String(phrase).trim()) return NextResponse.json({ error: 'userId and phrase are required' }, { status: 400 });
 
     const cipher = buildCipher();
     const clean = String(phrase).toUpperCase();
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'Cryptogram';
 
-    const page = addWorksheetPage(doc, helvBold, helv, docTitle, 'Use the number under each letter to decode the message. Each number always stands for the same letter.');
+    const page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, 'Use the number under each letter to decode the message. Each number always stands for the same letter.', theme);
     const startX = 54, maxWidth = PAGE_W - 108;
     const cellW = 20;
     let x = startX, y = PAGE_H - 150;
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Answer key
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     keyPage.drawText(clean, { x: 54, y: PAGE_H - 90, size: 12, font: helv, color: INK });
     let kky = PAGE_H - 130;

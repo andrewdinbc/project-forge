@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -17,25 +17,27 @@ function scramble(word: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, words, title } = (await request.json()) || {};
+    const { userId, words, title, bundleId } = (await request.json()) || {};
     if (!userId || !words) return NextResponse.json({ error: 'userId and words are required' }, { status: 400 });
     const list = String(words).split('\n').map((w: string) => w.trim()).filter(Boolean);
     if (!list.length) return NextResponse.json({ error: 'Enter at least one word' }, { status: 400 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'Word Scramble';
 
-    let page = addWorksheetPage(doc, helvBold, helv, docTitle, 'Unscramble each word and write it on the line.');
+    let page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, 'Unscramble each word and write it on the line.', theme);
     let y = PAGE_H - 140;
-    list.forEach((w, i) => {
-      if (y < 70) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+    for (let i = 0; i < list.length; i++) {
+      const w = list[i];
+      if (y < 70) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
       const scrambled = scramble(w).toUpperCase();
       page.drawText(`${i + 1}.  ${scrambled}`, { x: 54, y, size: 16, font: helvBold, color: INK });
       page.drawLine({ start: { x: 300, y: y - 3 }, end: { x: PAGE_W - 54, y: y - 3 }, thickness: 1, color: LINE });
       y -= 32;
-    });
+    }
 
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     let ky = PAGE_H - 90;
     list.forEach((w, i) => {

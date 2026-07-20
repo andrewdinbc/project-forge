@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -8,7 +8,7 @@ const admin: any = supabaseAdmin;
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, words, boardCount = 10, freeSpace = true, title } = (await request.json()) || {};
+    const { userId, words, boardCount = 10, freeSpace = true, title, bundleId } = (await request.json()) || {};
     if (!userId || !words) return NextResponse.json({ error: 'userId and words are required' }, { status: 400 });
     const list = String(words).split('\n').map((w: string) => w.trim()).filter(Boolean);
     const needed = freeSpace ? 24 : 25;
@@ -16,11 +16,12 @@ export async function POST(request: NextRequest) {
 
     const n = Math.max(1, Math.min(40, parseInt(boardCount, 10) || 10));
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'Bingo';
     const grid = 5, margin = 60, boardSize = PAGE_W - margin * 2, cell = boardSize / grid;
 
     for (let b = 0; b < n; b++) {
-      const page = doc.addPage([PAGE_W, PAGE_H]);
+      const page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme);
       page.drawText(docTitle, { x: margin, y: PAGE_H - 50, size: 20, font: helvBold, color: NAVY });
       page.drawText(`Board ${b + 1}`, { x: PAGE_W - margin - 70, y: PAGE_H - 50, size: 11, font: helv, color: rgb(0.5, 0.5, 0.5) });
       const picks = shuffle(list).slice(0, needed);
@@ -47,10 +48,11 @@ export async function POST(request: NextRequest) {
     // Calling cards -- one small card per word/fact, to cut apart and draw from.
     const ccCols = 4, ccRows = 8, ccMargin = 30, ccW = (PAGE_W - ccMargin * 2) / ccCols, ccH = (PAGE_H - ccMargin * 2) / ccRows;
     let ccPage: any = null;
-    list.forEach((w: string, i: number) => {
+    for (let i = 0; i < list.length; i++) {
+      const w: string = list[i];
       const pos = i % (ccCols * ccRows);
       if (pos === 0) {
-        ccPage = doc.addPage([PAGE_W, PAGE_H]);
+        ccPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, ccPage, theme);
         ccPage.drawText('Calling Cards', { x: ccMargin, y: PAGE_H - 20, size: 12, font: helvBold, color: NAVY });
       }
       const col = pos % ccCols, row = Math.floor(pos / ccCols);
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
       const size = w.length > 12 ? 8 : 10;
       const tw = helv.widthOfTextAtSize(w, size);
       ccPage.drawText(w, { x: x + Math.max(2, (ccW - tw) / 2), y: y + ccH / 2 - 4, size, font: helv, color: INK });
-    });
+    }
 
     const bytes = await doc.save();
     const fileUrl = await uploadWorksheetPdf(admin, userId, bytes, 'bingo', `${docTitle}.pdf`);

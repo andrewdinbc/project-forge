@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -16,12 +16,13 @@ function makeSquare(size: number, maxVal: number) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, size = 3, maxVal = 9, count = 4, title } = (await request.json()) || {};
+    const { userId, size = 3, maxVal = 9, count = 4, title, bundleId } = (await request.json()) || {};
     if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     const n = Math.max(3, Math.min(6, parseInt(size, 10) || 3));
     const puzzleCount = Math.max(1, Math.min(6, parseInt(count, 10) || 4));
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'Addition Squares';
     const puzzles = Array.from({ length: puzzleCount }, () => makeSquare(n, maxVal));
 
@@ -52,17 +53,18 @@ export async function POST(request: NextRequest) {
       page.drawText('=', { x: x0 - 16, y: y0 - n * cell - 16, size: 10, font: helv, color: NAVY });
     };
 
-    let page = addWorksheetPage(doc, helvBold, helv, docTitle, 'Fill in the missing number in each row using the sum on the right.');
+    let page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, 'Fill in the missing number in each row using the sum on the right.', theme);
     const cell = 42;
     let y = PAGE_H - 170;
-    puzzles.forEach((p, i) => {
-      if (y - (n + 1) * cell < 60) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+    for (let i = 0; i < puzzles.length; i++) {
+      const p = puzzles[i];
+      if (y - (n + 1) * cell < 60) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
       page.drawText(`Puzzle ${i + 1}`, { x: 54, y: y + 14, size: 11, font: helvBold, color: NAVY });
       drawSquare(page, p.grid, p.rowSums, p.colSums, p.blanks, 54, y, cell, false);
       y -= (n + 1) * cell + 50;
-    });
+    }
 
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     let ky = PAGE_H - 100;
     puzzles.forEach((p, i) => {

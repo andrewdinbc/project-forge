@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -56,7 +56,7 @@ function placeWords(words: string[], size: number, directions: number[][]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, words, difficulty = 'basic', title } = (await request.json()) || {};
+    const { userId, words, difficulty = 'basic', title, bundleId } = (await request.json()) || {};
     if (!userId || !words) return NextResponse.json({ error: 'userId and words are required' }, { status: 400 });
     const list = String(words).split('\n').map((w: string) => w.trim().toUpperCase().replace(/[^A-Z]/g, '')).filter(Boolean);
     if (!list.length) return NextResponse.json({ error: 'Enter at least one word' }, { status: 400 });
@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     const { grid, placed, notPlaced } = placeWords(list, size, directions);
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const docTitle = title?.trim() || 'Word Search';
     const cell = Math.min(30, (PAGE_W - 108) / size);
     const gridTop = PAGE_H - 150;
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    const page = addWorksheetPage(doc, helvBold, helv, docTitle, `Find these ${list.length} words.`);
+    const page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, `Find these ${list.length} words.`, theme);
     drawGrid(page, false);
     let wy = gridTop - size * cell - 30;
     if (wy < 60) { /* word list overflow -- rare with size cap 20 */ }
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       page.drawText(`(Couldn't fit: ${notPlaced.join(', ')} -- try a larger grid or fewer/shorter words)`, { x: 54, y: wy, size: 9, font: helv, color: rgb(0.65, 0.2, 0.2) });
     }
 
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     drawGrid(keyPage, true);
 

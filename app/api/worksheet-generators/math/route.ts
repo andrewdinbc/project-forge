@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, wrapLines, randInt, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, wrapLines, randInt, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -96,17 +96,18 @@ function drawVerticalProblem(page: any, x: number, y: number, p: any, font: any,
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, op, mode, config = {}, title } = (await request.json()) || {};
+    const { userId, op, mode, config = {}, title, bundleId } = (await request.json()) || {};
     if (!userId || !op || !mode) return NextResponse.json({ error: 'userId, op, and mode are required' }, { status: 400 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const opSymbol: any = { addition: '+', subtraction: '-', multiplication: '×', division: '÷' };
     const docTitle = title?.trim() || `${op[0].toUpperCase()}${op.slice(1)} Practice`;
 
     if (mode === 'basic') {
       const perPage = config.problemsPerPage === 50 ? 50 : 25;
       const cols = 5, rows = perPage / cols;
-      let page = addWorksheetPage(doc, helvBold, helv, docTitle, `${perPage} problems`);
+      let page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, `${perPage} problems`, theme);
       const startY = PAGE_H - 130, cellW = (PAGE_W - 108) / cols, cellH = (startY - 60) / rows;
       let count = 0;
       const totalProblems = perPage; // one page per generation for basic mode
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
     const orientation = config.orientation === 'horizontal' ? 'horizontal' : 'vertical';
     const wordProblems = op === 'addition' && !!config.wordProblems;
 
-    let page = addWorksheetPage(doc, helvBold, helv, docTitle, wordProblems ? 'Word problems' : undefined);
+    let page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, wordProblems ? 'Word problems' : undefined, theme);
     let y = PAGE_H - 140;
 
     if (wordProblems) {
@@ -140,12 +141,12 @@ export async function POST(request: NextRequest) {
         const text = `${i + 1}. ${template(p.a, p.b)}`;
         const lines = wrapLines(text, helv, 11, PAGE_W - 108);
         for (const line of lines) {
-          if (y < 80) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+          if (y < 80) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
           page.drawText(line, { x: 54, y, size: 11, font: helv, color: INK });
           y -= 15;
         }
         y -= 8;
-        if (y < 80) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+        if (y < 80) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
         page.drawText('Answer: ___________________', { x: 70, y, size: 10, font: helv, color: INK });
         y -= 24;
       }
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
       let col = 0;
       for (let i = 0; i < count; i++) {
         const p = generateProblem(op, mode, config);
-        if (y < 100) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; col = 0; }
+        if (y < 100) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; col = 0; }
         drawVerticalProblem(page, 54 + col * colW, y, p, helvBold, 16);
         col++;
         if (col >= cols) { col = 0; y -= 100; }
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
     } else {
       for (let i = 0; i < count; i++) {
         const p = generateProblem(op, mode, config);
-        if (y < 80) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60; }
+        if (y < 80) { page = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, page, theme); y = PAGE_H - 60; }
         drawHorizontalProblem(page, 54, y, p, helv, 14);
         y -= 30;
       }

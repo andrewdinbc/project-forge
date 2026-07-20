@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, randInt, wrapLines, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, addWorksheetPage, uploadWorksheetPdf, randInt, wrapLines, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -10,7 +10,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, subject, min = 1, max = 100, grade = '', title } = (await request.json()) || {};
+    const { userId, subject, min = 1, max = 100, grade = '', title, bundleId } = (await request.json()) || {};
     if (!userId || !subject) return NextResponse.json({ error: 'userId and subject are required' }, { status: 400 });
 
     let prompt: string, docTitle: string, subtitle: string;
@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
     if (clues.length < 5) return NextResponse.json({ error: 'Could not generate clues -- try again' }, { status: 500 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
-    const page = addWorksheetPage(doc, helvBold, helv, docTitle, subtitle);
+    const theme = await loadBundleTheme(admin, userId, bundleId);
+    const page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, subtitle, theme);
     let y = PAGE_H - 150;
     DAYS.forEach((day, i) => {
       page.drawText(`${day}:`, { x: 54, y, size: 11, font: helvBold, color: NAVY });
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     });
     page.drawText('Final answer: _______________________', { x: 54, y: y - 10, size: 12, font: helvBold, color: NAVY });
 
-    const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    const keyPage = doc.addPage([PAGE_W, PAGE_H]); await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     const answer = subject === 'number' ? String(numberTarget) : (data.answer || '');
     keyPage.drawText(`Answer: ${answer}`, { x: 54, y: PAGE_H - 90, size: 13, font: helv, color: INK });
