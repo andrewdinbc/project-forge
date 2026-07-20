@@ -77,7 +77,7 @@ export const FOLDABLE_SHAPES = [
     minCount: 2,
     maxCount: 2,
     defaultCount: 2,
-    matchKeywords: ['puzzle', 'jigsaw', 'interlock', 'piece', 'fit together', 'prior knowledge', 'inference'],
+    matchKeywords: ['puzzle', 'jigsaw', 'interlock', 'puzzle piece', 'interlocking piece', 'fit together', 'prior knowledge', 'inference'],
   },
   {
     key: 'silhouette-card',
@@ -88,7 +88,27 @@ export const FOLDABLE_SHAPES = [
     maxCount: 1,
     defaultCount: 1,
     outlineOptions: ['circle', 'banner', 'badge', 'cloud'],
-    matchKeywords: ['card', 'label', 'callout', 'vocabulary', 'term', 'badge', 'banner', 'cloud', 'cut-and-paste label'],
+    matchKeywords: ['label', 'callout', 'vocabulary', 'term', 'badge', 'banner', 'cloud', 'cut-and-paste label', 'card'],
+  },
+  {
+    key: 'storage-pocket',
+    name: 'Storage Pocket / Envelope',
+    description: 'A front panel with three fold-under flaps (left, right, bottom) that fold behind and glue to form an open-top pocket, glued onto a lapbook base to hold loose cards or small pieces. Confirmed against a real uploaded lapbook (Electricity Lapbook, Single Copy) -- lapbooks lean on this shape heavily for vocabulary card storage.',
+    mechanic: 'assemble-and-glue',
+    minCount: 1,
+    maxCount: 1,
+    defaultCount: 1,
+    matchKeywords: ['pocket', 'envelope', 'pouch', 'storage'],
+  },
+  {
+    key: 'accordion-booklet',
+    name: 'Accordion Mini-Booklet',
+    description: 'N equal panels in a single strip, cut out as one piece and folded in alternating mountain/valley creases (Z-fold) into a small flip-through booklet. Genuinely sequential, turn-the-page content -- distinct from Layered Book, which reveals stacked tabs rather than flipping pages.',
+    mechanic: 'fold-and-lift',
+    minCount: 3,
+    maxCount: 6,
+    defaultCount: 4,
+    matchKeywords: ['accordion', 'flip book', 'mini-booklet', 'mini book', 'sequential', 'z-fold', 'zigzag', 'booklet'],
   },
 ];
 
@@ -503,4 +523,104 @@ export function drawSilhouetteCard(page: any, opts: {
   }
 
   page.drawText(`Cut around the ${outline} outline. No fold -- glue flat onto the notebook page.`, { x, y: y - 14, size: 8, font, color: GRAY });
+}
+
+// Storage Pocket / Envelope: a rectangle with three fold-under flaps (left,
+// right, bottom) that fold behind the front panel and get glued to form an
+// open-top pocket, glued onto the lapbook base to hold loose cards/pieces.
+// Cut the outer silhouette (solid) once; fold the three flap lines (dashed)
+// under; glue the folded edges to the panel behind them.
+export function drawStoragePocket(page: any, opts: {
+  x: number; y: number; width: number; height: number;
+  count: number; labels: string[]; contents: string[];
+  font: any; boldFont: any;
+}) {
+  const { x, y, width, height, labels, contents, font, boldFont } = opts;
+  const flapDepth = Math.min(width, height) * 0.16;
+  const label = labels[0] || 'Storage Pocket';
+  const content = contents[0] || '';
+
+  // Outline: front panel with side/bottom flap extensions (cut as one piece)
+  const outline = [
+    { x: x + flapDepth, y: y + height },
+    { x: x + width - flapDepth, y: y + height },
+    { x: x + width - flapDepth, y: y + flapDepth },
+    { x: x + width, y: y + flapDepth },
+    { x: x + width, y: y },
+    { x: x, y: y },
+    { x: x, y: y + flapDepth },
+    { x: x + flapDepth, y: y + flapDepth },
+    { x: x + flapDepth, y: y + height },
+  ];
+  drawPolyline(page, outline, { thickness: 1.5 });
+
+  // Fold lines: separate the bottom flap and the two side flaps from the
+  // front-facing panel.
+  drawDashedLine(page, { x: x + flapDepth, y: y + flapDepth }, { x: x + width - flapDepth, y: y + flapDepth }, { thickness: 1.2 });
+  drawDashedLine(page, { x: x + flapDepth, y: y + flapDepth }, { x: x + flapDepth, y: y + height }, { thickness: 1.2 });
+  drawDashedLine(page, { x: x + width - flapDepth, y: y + flapDepth }, { x: x + width - flapDepth, y: y + height }, { thickness: 1.2 });
+
+  const cx = x + width / 2;
+  const { lines: labelLines, size: labelSize } = fitText(label, boldFont, [12, 11, 10], width - flapDepth * 2 - 16, 2);
+  let ty = y + height - 24;
+  for (const line of labelLines) {
+    const tw = boldFont.widthOfTextAtSize(line, labelSize);
+    page.drawText(line, { x: cx - tw / 2, y: ty, size: labelSize, font: boldFont, color: BLACK });
+    ty -= labelSize + 2;
+  }
+  const { lines: contentLines, size: contentSize } = fitText(content, font, [9, 8, 7], width - flapDepth * 2 - 16, 4);
+  ty -= 6;
+  for (const line of contentLines) {
+    const tw = font.widthOfTextAtSize(line, contentSize);
+    page.drawText(line, { x: cx - tw / 2, y: ty, size: contentSize, font, color: BLACK });
+    ty -= contentSize + 1;
+  }
+
+  page.drawText('Cut the outer outline. Fold the 3 flaps back behind the front panel and glue to form a pocket.', { x, y: y - 14, size: 8, font, color: GRAY });
+}
+
+// Accordion Mini-Booklet: N equal panels in a single strip, cut out as one
+// piece, folded in alternating mountain/valley creases (Z-fold) into a
+// small flip-through booklet. Distinct from Layered Book (which reveals
+// stacked tabs) -- this is genuinely sequential, turn-the-page content.
+export function drawAccordionBooklet(page: any, opts: {
+  x: number; y: number; width: number; height: number;
+  count: number; labels: string[]; contents: string[];
+  font: any; boldFont: any;
+}) {
+  const { x, y, width, height, count, labels, contents, font, boldFont } = opts;
+  const panelW = width / count;
+  const stripH = height * 0.7;
+  const topY = y + height;
+
+  page.drawRectangle({ x, y: topY - stripH, width, height: stripH, borderColor: BLACK, borderWidth: 1.5 });
+  for (let i = 1; i < count; i++) {
+    const cx = x + i * panelW;
+    // Alternate mountain/valley fold styling isn't visually distinguishable
+    // in 2D line art, so both are drawn dashed with a fold-direction note.
+    drawDashedLine(page, { x: cx, y: topY }, { x: cx, y: topY - stripH }, { thickness: 1.2 });
+    page.drawText(i % 2 === 1 ? 'valley' : 'mountain', { x: cx - 14, y: topY - stripH - 10, size: 6, font, color: GRAY });
+  }
+
+  for (let i = 0; i < count; i++) {
+    const label = labels[i] || `Page ${i + 1}`;
+    const panelX = x + i * panelW;
+    const { lines, size } = fitText(label, boldFont, [9, 8, 7], panelW - 10, 2);
+    let ty = topY - 16;
+    for (const line of lines) {
+      const tw = boldFont.widthOfTextAtSize(line, size);
+      page.drawText(line, { x: panelX + panelW / 2 - tw / 2, y: ty, size, font: boldFont, color: BLACK });
+      ty -= size + 1;
+    }
+    const contentLines = wrapText(contents[i] || '', font, 7.5, panelW - 10);
+    let cy = ty - 6;
+    for (const line of contentLines) {
+      if (cy < topY - stripH + 6) break;
+      const tw = font.widthOfTextAtSize(line, 7.5);
+      page.drawText(line, { x: panelX + panelW / 2 - tw / 2, y: cy, size: 7.5, font, color: BLACK });
+      cy -= 9;
+    }
+  }
+
+  page.drawText('Cut out the whole strip. Fold each crease in the alternating direction shown (mountain/valley) to form a small flip-through booklet.', { x, y: y - 14, size: 8, font, color: GRAY });
 }

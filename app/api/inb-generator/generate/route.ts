@@ -8,7 +8,7 @@ import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curricu
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 import { classifyComponents, drawCoverPage, drawTOCPage, drawDirectionsPage, drawTextPage } from '@/lib/inb-generator';
-import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook, drawRadialFoldable, drawTwoPanelComparison, drawPuzzlePiece, drawSilhouetteCard } from '@/lib/foldable-shapes';
+import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook, drawRadialFoldable, drawTwoPanelComparison, drawPuzzlePiece, drawSilhouetteCard, drawStoragePocket, drawAccordionBooklet } from '@/lib/foldable-shapes';
 
 const admin: any = supabaseAdmin;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -24,6 +24,8 @@ const SHAPE_DRAWERS: Record<string, (page: any, opts: any) => void> = {
   'two-panel-comparison': drawTwoPanelComparison,
   'puzzle-piece': drawPuzzlePiece,
   'silhouette-card': drawSilhouetteCard,
+  'storage-pocket': drawStoragePocket,
+  'accordion-booklet': drawAccordionBooklet,
 };
 
 export const maxDuration = 180;

@@ -3,7 +3,7 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { renderPageAsImage } from 'unpdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
-import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook, drawRadialFoldable, drawTwoPanelComparison, drawPuzzlePiece, drawSilhouetteCard } from '@/lib/foldable-shapes';
+import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook, drawRadialFoldable, drawTwoPanelComparison, drawPuzzlePiece, drawSilhouetteCard, drawStoragePocket, drawAccordionBooklet } from '@/lib/foldable-shapes';
 
 const admin: any = supabaseAdmin;
 const PAGE_W = 792; // US Letter landscape, matches the real templates this was calibrated against
@@ -49,6 +49,8 @@ export async function POST(request: NextRequest) {
       'two-panel-comparison': drawTwoPanelComparison,
       'puzzle-piece': drawPuzzlePiece,
       'silhouette-card': drawSilhouetteCard,
+      'storage-pocket': drawStoragePocket,
+      'accordion-booklet': drawAccordionBooklet,
     };
     DRAWERS[shapeType](page, drawOpts);
 
