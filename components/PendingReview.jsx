@@ -182,9 +182,17 @@ export default function PendingReview({ userId, refreshKey }) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not save this match')
-      setItems((prev) => prev.filter((p) => p.id !== item.id))
-      setSelected((prev) => { const next = new Set(prev); next.delete(item.id); return next })
       setMatchOpenId(null)
+      setSelected((prev) => { const next = new Set(prev); next.delete(item.id); return next })
+      if (data.stagedForEditing) {
+        // Font matches finalize immediately; everything else re-lands in
+        // Needs Review under its new open-license identity so it can be
+        // combined/sketched-over/AI-edited before Aj approves it into the
+        // real Parts Library -- refetch so the new staged item shows up.
+        setLocalRefresh((n) => n + 1)
+      } else {
+        setItems((prev) => prev.filter((p) => p.id !== item.id))
+      }
     } catch (e) {
       setMatchError(e.message)
     } finally {
@@ -208,8 +216,9 @@ export default function PendingReview({ userId, refreshKey }) {
         Raw crops from Separator -- direct pixels from someone else's PDF, not yet changed by you, so
         they don't count as Parts Library items yet. Check items and use Bulk Edit below to apply one
         change to several at once (the copyright-safe edit step, just done in batches), edit
-        individually, use <strong>Find Free Match</strong> to swap it for a genuinely open-license
-        equivalent instead, or Dismiss to throw one away.
+        individually, or use <strong>Find Free Match</strong> to swap it for an open-license starting
+        point instead -- either way, everything still needs an Edit + Save here before it's a real
+        Parts Library item. Dismiss throws one away.
       </p>
 
       {selected.size > 0 && (
@@ -325,7 +334,7 @@ export default function PendingReview({ userId, refreshKey }) {
                                 disabled={savingMatchUrl === (c.previewUrl || c.sourceUrl)}
                                 style={{ fontSize: 9, width: '100%', padding: '4px 0', background: '#2f6b41', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
                               >
-                                {savingMatchUrl === (c.previewUrl || c.sourceUrl) ? 'Saving…' : 'Use this instead'}
+                                {savingMatchUrl === (c.previewUrl || c.sourceUrl) ? 'Saving…' : (p.category === 'font_reference' ? 'Use this font' : 'Stage for editing')}
                               </button>
                             </div>
                           </div>

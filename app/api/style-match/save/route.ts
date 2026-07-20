@@ -4,17 +4,16 @@ import { errorMessage } from '@/lib/error-message';
 
 const admin: any = supabaseAdmin;
 
-// Saving a Style Match result (Aj, 2026-07-20): this is the other side of
-// style-search -- takes the candidate Aj picked and lands it directly in
-// the real Parts Library, source_type='external_license', WITH the license
-// metadata attached to the row (not just shown once in a search UI and
-// forgotten). requires_attribution + attribution_text travel with the
-// asset so the Copyright Auditor -- and Aj, months from now -- can always
-// answer "do I owe someone credit for this" without re-searching.
-//
-// Fonts don't have a downloadable image (the row IS the reference, same as
-// the existing Separator font_reference rows) -- just insert the metadata
-// row, no storage upload.
+// Saving a Style Match result (Aj, 2026-07-20): originally finalized
+// straight to the real Parts Library since it's already open-license and
+// needs no copyright review. Revised same day: "I still want to modify
+// them before sending to parts library with AI assistance" -- so this now
+// lands in Needs Review too (pending_review=true), same as a raw Separator
+// extraction, EXCEPT tagged source_type='external_license' so the Auditor
+// and the UI both know this one isn't in review for copyright reasons --
+// it's just staged for Aj to combine, sketch over, and AI-edit via the
+// existing Style Editor before it becomes a real asset. Editing it there
+// (asset-modifier/save) carries the license metadata forward automatically.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -41,6 +40,11 @@ export async function POST(request: NextRequest) {
       fileUrl = urlData.publicUrl;
     }
 
+    // Fonts have nothing to edit in the Style Editor (no image canvas) --
+    // those still land directly, matching how Separator's own font_reference
+    // rows already skip the review gate as derived data, not pixels.
+    const isFont = category === 'font' || category === 'font_reference';
+
     const { data: inserted, error: insErr } = await admin
       .from('library_parts')
       .insert({
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
         source_id: `style-match:${category}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         title, category, file_url: fileUrl,
         notes: `Sourced from ${source} (${license}). ${sourceUrl}`,
-        pending_review: false,
+        pending_review: !isFont,
         source_type: 'external_license',
         license_name: license || null,
         license_url: licenseUrl || null,
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
       await admin.from('library_parts').delete().eq('id', replacesPendingId).eq('user_id', userId);
     }
 
-    return NextResponse.json({ ok: true, saved: inserted });
+    return NextResponse.json({ ok: true, saved: inserted, stagedForEditing: !isFont });
   } catch (e) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
