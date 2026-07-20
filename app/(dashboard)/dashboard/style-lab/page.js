@@ -7,6 +7,7 @@ import { STYLE_DIALS, defaultDialValues, dialValuesToPromptText } from '@/lib/st
 import VisualComponents from '@/components/VisualComponents'
 import InstructErase from '@/components/InstructErase'
 import { SYSTEM_FONTS } from '@/lib/style-lab-fonts'
+import { LAYER_META } from '@/lib/style-lab-layers'
 
 // Style Lab (moved here from lesson-planner 2026-07-18, per Aj -- this app,
 // project-forge, is the real TPT bundle/publishing platform, so the
@@ -26,16 +27,6 @@ const STATUS_LABELS = {
 // The style/format layers we extract (Aj's breakdown, 2026-07-18) --
 // Content, Branding, and Credits & Terms are deliberately excluded, see
 // the comment block at the top of /api/style-lab/extract.
-const LAYER_META = [
-  { key: 'visuals', label: 'Visuals Layer', hint: 'Layout, color coding, formatting conventions -- described abstractly, never reproducing actual clipart/icon assets.' },
-  { key: 'structure', label: 'Structure Layer', hint: 'Sequencing, scaffolding, differentiation, pacing, grouping, formatting.' },
-  { key: 'interaction', label: 'Interaction Layer', hint: 'How students engage, as a generic format -- task cards, drag-and-drop, centers, games.' },
-  { key: 'assessmentFormat', label: 'Assessment Layer', hint: 'Format of how understanding is checked -- self-checking, rubric tiers, auto-grading -- not the actual key/rubric content.' },
-  { key: 'teacherDirections', label: 'Teacher Directions Layer', hint: 'Format of setup/prep notes, if present.' },
-  { key: 'studentDirections', label: 'Student Directions Layer', hint: 'Format of how instructions are presented to students.' },
-  { key: 'extension', label: 'Extension Layer', hint: 'Format of any early-finisher/enrichment provision.' },
-  { key: 'digital', label: 'Digital Layer', hint: 'Which digital format(s) exist, as a plain fact.' },
-]
 
 export default function StyleLabPage() {
   const [resources, setResources] = useState([])
@@ -547,7 +538,12 @@ export default function StyleLabPage() {
 
   return (
     <div style={{ fontFamily: FONT_BODY, maxWidth: 900, margin: '0 auto', padding: '24px 20px' }}>
-      <h1 style={{ color: C.navy, fontSize: 22, marginBottom: 4 }}>🎨 Style Lab</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <h1 style={{ color: C.navy, fontSize: 22, margin: 0 }}>🎨 Style Lab</h1>
+        <a href="/dashboard/style-lab/gallery" style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
+          🔍 Browse for Inspiration
+        </a>
+      </div>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 12 }}>
         Everything you've uploaded or linked while building resources lands here. Edit it down to the parts you actually want, then either make it a standing AI preference or flag it for a future TPT listing.
       </p>
@@ -561,12 +557,13 @@ export default function StyleLabPage() {
           it deliberately never touches or reproduces the actual content/text. You can like/dislike
           or edit individual observations, then select a few items and "Blend" them into a named
           style profile (like combining musical influences into a genre). That blend can be
-          fine-tuned with dials, pushed into AI Steering so future generations lean on it
-          automatically, or used directly to generate wholly original content in that style for a
-          subject/grade you pick. Nothing from your Dashboard products shows up here automatically --
-          if you want a product's style available in Style Lab, upload or import it here separately.
-          (For mixing actual content pages from existing products into a new hybrid PDF, that's
-          Composer, not this page.)
+          fine-tuned with dials, or used directly to generate wholly original content in that style
+          for a subject/grade you pick -- it no longer pushes to AI Steering; that's for your own
+          products on the Dashboard now. Nothing from your Dashboard products shows up here
+          automatically -- if you want a product's style available in Style Lab, upload or import it
+          here separately. (For mixing actual content pages from existing products into a new hybrid
+          PDF, that's Composer, not this page. To browse everything here for visual inspiration, one
+          at a time, use "🔍 Browse for Inspiration" above.)
         </p>
       </div>
 
