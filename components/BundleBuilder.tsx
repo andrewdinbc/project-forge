@@ -7,9 +7,19 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { Product } from '@/types/product';
 import { getCurrentUser } from '@/lib/auth';
 import { createBundle, updateBundle, getBundle, addProductToBundle } from '@/lib/bundles';
+import { STYLE_CATEGORIES } from '@/lib/product-builder-categories';
 import BundleProductCard from './BundleProductCard';
 import BundlePreview from './BundlePreview';
 import BundleExportDialog from './BundleExportDialog';
+
+// Bundle Border Theme (Aj, 2026-07-19 evening): reuses the exact same
+// STYLE_CATEGORIES/Parts Library picker Product Builder already has, but
+// only Border and Section Header apply here -- those are the two
+// worksheet-generators know how to draw (lib/worksheet-pdf.js
+// drawThemeBorder/drawThemeHeader). Font/Spacing/Icon/Color are Product
+// Builder-specific (full-page text layout), not meaningful for a
+// generator PDF that's mostly a puzzle grid.
+const BUNDLE_THEME_CATEGORIES = STYLE_CATEGORIES.filter((c) => c.key === 'border' || c.key === 'section_header');
 
 interface BundledProduct extends Product {
   bundleId: string;
@@ -27,6 +37,8 @@ export default function BundleBuilder({ bundleId }: { bundleId?: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [styleSelections, setStyleSelections] = useState<Record<string, any>>({ border: null, section_header: null });
+  const [libraryParts, setLibraryParts] = useState<any[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -46,13 +58,18 @@ export default function BundleBuilder({ bundleId }: { bundleId?: string }) {
         const products: Product[] = await response.json();
         setAvailableProducts(products);
 
+        const user = await getCurrentUser();
+        if (user) {
+          fetch(`/api/library-parts?userId=${user.id}`).then((r) => r.json()).then((d) => setLibraryParts(d.parts || [])).catch(() => {});
+        }
+
         if (bundleId) {
-          const user = await getCurrentUser();
           if (!user) { router.push('/auth/login'); return; }
           const bundle = await getBundle(bundleId, user.id);
           if (!bundle) { setSaveError('Bundle not found.'); return; }
           setBundleName(bundle.title || 'My Bundle');
           setBundleDescription(bundle.description || '');
+          setStyleSelections({ border: null, section_header: null, ...(bundle.style_selections || {}) });
           const existingItems = (bundle.bundle_items || [])
             .map((item: any) => {
               const product = item.products || products.find((p) => p.id === item.product_id);
@@ -105,6 +122,13 @@ export default function BundleBuilder({ bundleId }: { bundleId?: string }) {
 
   const totalPrice = bundledProducts.reduce((sum, p) => sum + p.price * p.quantity, 0);
 
+  function partsForTheme(categoryKey: string) {
+    return libraryParts.filter((p: any) => p.category === categoryKey);
+  }
+  function selectTheme(categoryKey: string, partId: string) {
+    setStyleSelections((prev) => ({ ...prev, [categoryKey]: prev[categoryKey] === partId ? null : partId }));
+  }
+
   const handleSaveBundle = useCallback(async (status: 'draft' | 'active') => {
     if (!bundleName.trim()) { setSaveError('Bundle name is required.'); return; }
     setIsSaving(true);
@@ -120,6 +144,7 @@ export default function BundleBuilder({ bundleId }: { bundleId?: string }) {
         original_price_usd: totalPrice,
         bundle_price_usd: totalPrice,
         status,
+        style_selections: styleSelections,
       };
 
       let bundle;
@@ -212,6 +237,55 @@ export default function BundleBuilder({ bundleId }: { bundleId?: string }) {
               isSaving={isSaving}
             />
           </div>
+        </div>
+
+        {/* Bundle Border Theme -- applied by worksheet-generators (sudoku, kenken, word search, etc.) to every PDF saved as part of this bundle */}
+        <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-1">🎨 Bundle Border Theme</h2>
+          <p className="text-sm text-slate-600 mb-4">
+            Pick a border and/or section-header from your Parts Library. Every Worksheet Generator page
+            (Sudoku, KenKen, Word Search, and the rest) will apply it automatically when you generate a
+            PDF under this bundle -- no theme picked means plain pages, same as before.
+          </p>
+          {BUNDLE_THEME_CATEGORIES.map((cat) => {
+            const items = partsForTheme(cat.key);
+            const selected = styleSelections[cat.key];
+            return (
+              <div key={cat.key} className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold text-slate-800">{cat.icon} {cat.label}</div>
+                  <a href={`${cat.editorPath}?category=${cat.key}&title=${encodeURIComponent(cat.label)}`} className="text-xs text-purple-700 underline">
+                    Open {cat.editorLabel} →
+                  </a>
+                </div>
+                {items.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">Nothing tagged {cat.label} yet -- use the editor link above to create one.</p>
+                ) : (
+                  <div className="flex gap-2 flex-wrap">
+                    {items.map((p: any) => {
+                      const isSelected = selected === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => selectTheme(cat.key, p.id)}
+                          title={p.title}
+                          className={`flex flex-col items-center gap-1 w-20 p-1 rounded-md border-2 ${isSelected ? 'border-purple-600 bg-purple-50' : 'border-transparent bg-white'}`}
+                        >
+                          {p.file_url ? (
+                            <img src={p.file_url} alt={p.title} className="w-16 h-16 object-cover rounded border border-slate-200" />
+                          ) : (
+                            <div className="w-16 h-16 rounded border border-slate-200 bg-slate-100 flex items-center justify-center text-lg">{cat.icon}</div>
+                          )}
+                          <span className="text-[10px] text-slate-600 text-center leading-tight line-clamp-2">{p.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Bundle Products Editor */}

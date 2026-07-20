@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addWorksheetPage, uploadWorksheetPdf, shuffle, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, uploadWorksheetPdf, loadBundleTheme, drawThemeBorder, shuffle, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
@@ -45,12 +45,13 @@ function makeSudoku(size: number, boxRows: number, boxCols: number, difficulty: 
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, size = 9, difficulty = 'medium', title } = (await request.json()) || {};
+    const { userId, size = 9, difficulty = 'medium', title, bundleId } = (await request.json()) || {};
     if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     const n = SIZE_BOXES[size] ? size : 9;
     const [boxRows, boxCols] = SIZE_BOXES[n];
     const { puzzle, solved } = makeSudoku(n, boxRows, boxCols, difficulty);
 
+    const theme = await loadBundleTheme(admin, userId, bundleId);
     const { doc, helv, helvBold } = await newWorksheetDoc();
     const docTitle = title?.trim() || `${n}x${n} Sudoku`;
 
@@ -77,10 +78,11 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    const page = addWorksheetPage(doc, helvBold, helv, docTitle, `Fill in every row, column, and ${boxRows}x${boxCols} box with 1-${n}, no repeats.`);
+    const page = await addThemedWorksheetPage(doc, helvBold, helv, docTitle, `Fill in every row, column, and ${boxRows}x${boxCols} box with 1-${n}, no repeats.`, theme);
     drawGrid(page, puzzle);
 
     const keyPage = doc.addPage([PAGE_W, PAGE_H]);
+    await drawThemeBorder(doc, keyPage, theme);
     keyPage.drawText(`${docTitle} -- Answer Key`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
     drawGrid(keyPage, solved);
 
