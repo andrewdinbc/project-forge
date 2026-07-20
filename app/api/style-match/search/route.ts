@@ -21,11 +21,13 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 //                         fonts.google.com site itself uses)
 //   border /
 //   section_header /
-//   icon_illustration -> OpenClipart (100% public domain / CC0) +
-//                         Openverse (aggregates CC0 + openly-licensed work
-//                         across many collections) -- merged, each result
-//                         tagged with its real license, CC0/PDM surfaced
-//                         first since those need no attribution at all.
+//   icon_illustration -> Openverse (aggregates CC0 + openly-licensed work
+//                         across many collections, including Wikimedia's
+//                         public-domain icon sets) -- each result tagged
+//                         with its real license, CC0/PDM surfaced first
+//                         since those need no attribution at all. OpenClipart
+//                         was tried and dropped: its JSON API is effectively
+//                         dead (bot-check HTML, not JSON, as of 2026-07-20).
 
 type Candidate = {
   title: string;
@@ -94,29 +96,24 @@ Pick the 6 best matches. Return ONLY JSON, no markdown fences: {"picks": ["Famil
   }));
 }
 
-async function searchOpenClipart(query: string): Promise<Candidate[]> {
-  const res = await fetch(`https://openclipart.org/search/json/?query=${encodeURIComponent(query)}&amount=10`);
-  if (!res.ok) throw new Error(`OpenClipart search failed (${res.status})`);
-  const data = await res.json();
-  const items = Object.values(data.payload || {}) as any[];
-  return items.slice(0, 10).map((it: any) => ({
-    title: it.title || 'Untitled',
-    previewUrl: it.svg?.png_thumb || it.svg?.png_full || '',
-    sourceUrl: it.svg?.url || it.detail_link || `https://openclipart.org/detail/${it.id}`,
-    source: 'OpenClipart',
-    license: 'Public Domain (CC0)',
-    licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
-    requiresAttribution: false,
-    attributionText: null,
-  }));
+// OpenClipart's JSON API is effectively dead -- dropped from the Openverse/
+// CC Search provider integration back in 2019, and the endpoint now returns
+// a bot-check HTML page instead of JSON. Openverse alone already indexes a
+// large amount of public-domain/CC0 illustration (including Wikimedia's
+// icon collections), so it covers this need without a broken second call.
+
+function dedupeCandidates(items: Candidate[]): Candidate[] {
+  const seen = new Set<string>();
+  return items.filter((c) => {
+    const key = c.sourceUrl || c.previewUrl;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function searchOpenverse(query: string): Promise<Candidate[]> {
-  const res = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page_size=12`);
-  if (!res.ok) throw new Error(`Openverse search failed (${res.status})`);
-  const data = await res.json();
-  const items = (data.results || []) as any[];
-  return items.map((it: any) => {
+  const toCandidate = (it: any): Candidate => {
     const lic = (it.license || '').toLowerCase();
     const isCC0 = lic === 'cc0' || lic === 'pdm';
     return {
@@ -129,7 +126,22 @@ async function searchOpenverse(query: string): Promise<Candidate[]> {
       requiresAttribution: !isCC0,
       attributionText: !isCC0 ? `${it.title || 'Image'} by ${it.creator || 'unknown creator'}, ${(it.license || '').toUpperCase()} via ${it.source || 'Openverse'}` : null,
     };
-  });
+  };
+
+  // Two passes: a strict CC0/public-domain-only pass first (these need zero
+  // attribution tracking, exactly what "open source" was asking for), then
+  // a broader pass as backfill if the strict pass comes up thin. Both bias
+  // toward category=illustration so icons/clipart rank over photographs.
+  const strictRes = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&category=illustration&license=cc0,pdm&page_size=10`);
+  const strict = strictRes.ok ? ((await strictRes.json()).results || []).map(toCandidate) : [];
+
+  if (strict.length >= 6) return dedupeCandidates(strict);
+
+  const broadRes = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&category=illustration&page_size=10`);
+  const broad = broadRes.ok ? ((await broadRes.json()).results || []).map(toCandidate) : [];
+
+  if (!strictRes.ok && !broadRes.ok) throw new Error(`Openverse search failed (${strictRes.status})`);
+  return dedupeCandidates([...strict, ...broad]).sort((a, b) => Number(a.requiresAttribution) - Number(b.requiresAttribution));
 }
 
 export async function POST(request: NextRequest) {
@@ -144,16 +156,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, results, sourcesQueried: ['Google Fonts'] });
     }
 
-    // border, section_header, icon_illustration all search the same two
-    // open-license image sources -- merged, CC0/public-domain results
-    // sorted first since those need zero attribution tracking.
+    // border, section_header, icon_illustration all search Openverse,
+    // CC0/public-domain results sorted first since those need zero
+    // attribution tracking.
     const errors: string[] = [];
-    const [openclipart, openverse] = await Promise.all([
-      searchOpenClipart(query).catch((e) => { errors.push(`OpenClipart: ${errorMessage(e)}`); return []; }),
-      searchOpenverse(query).catch((e) => { errors.push(`Openverse: ${errorMessage(e)}`); return []; }),
-    ]);
-    const merged = [...openclipart, ...openverse].sort((a, b) => Number(a.requiresAttribution) - Number(b.requiresAttribution));
-    return NextResponse.json({ ok: true, results: merged, sourcesQueried: ['OpenClipart', 'Openverse'], errors: errors.length ? errors : undefined });
+    const results = await searchOpenverse(query).catch((e) => { errors.push(`Openverse: ${errorMessage(e)}`); return []; });
+    return NextResponse.json({ ok: true, results, sourcesQueried: ['Openverse'], errors: errors.length ? errors : undefined });
   } catch (e) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }

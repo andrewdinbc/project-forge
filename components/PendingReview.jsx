@@ -26,11 +26,11 @@ import { STYLE_CATEGORIES } from '@/lib/product-builder-categories'
 // Find Free Match (Aj, 2026-07-20): "search [free/open-license sites] for
 // near equivalent ones that I can use for free." An alternative to editing
 // the raw extraction -- search genuinely open-license sources (Google
-// Fonts / OpenClipart / Openverse) using this item's own title+notes as
-// the query, then swap the pending pixel-extraction for a free-license
-// asset entirely. /api/style-match/save deletes the pending row server-side
-// once a match is picked, so it just disappears from this list -- no
-// separate dismiss step needed.
+// Fonts for fonts, Openverse for borders/headers/icons) using this item's
+// own title+notes as the query, then swap the pending pixel-extraction for
+// a free-license asset entirely. /api/style-match/save deletes the pending
+// row server-side once a match is picked, so it just disappears from this
+// list -- no separate dismiss step needed.
 const MATCH_SEARCHABLE = new Set(['border', 'section_header', 'icon_illustration', 'font_reference'])
 
 export default function PendingReview({ userId, refreshKey }) {
