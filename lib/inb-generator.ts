@@ -61,7 +61,15 @@ const GOLD = rgb(0.71, 0.49, 0.16); // #b57c2a
 const GRAY = rgb(0.5, 0.5, 0.5);
 
 function wrapText(text: string, font: any, size: number, maxWidth: number): string[] {
-  const words = (text || '').split(' ');
+  // Root-cause fix (2026-07-20): AI-generated content (a multi-paragraph
+  // reading passage, in particular) can contain literal newline/tab
+  // characters. pdf-lib's WinAnsi encoding throws on raw control
+  // characters ('WinAnsi cannot encode "\n"') if they ever reach
+  // page.drawText -- splitting on a plain space alone leaves them
+  // embedded inside a "word" token. Collapse ALL whitespace runs
+  // (space/newline/tab) to a single space before splitting so no
+  // control character can ever survive into a drawn line.
+  const words = (text || '').replace(/\s+/g, ' ').trim().split(' ');
   const lines: string[] = [];
   let current = '';
   for (const word of words) {
@@ -108,7 +116,7 @@ export function drawTOCPage(page: any, opts: { width: number; height: number; it
   items.forEach((label, i) => {
     if (y < 60) return;
     page.drawText(`${i + 1}.`, { x: 50, y, size: 11, font: boldFont, color: NAVY });
-    page.drawText(label, { x: 78, y, size: 11, font, color: BLACK });
+    page.drawText((label || '').replace(/\s+/g, ' ').trim(), { x: 78, y, size: 11, font, color: BLACK });
     y -= 22;
   });
 }

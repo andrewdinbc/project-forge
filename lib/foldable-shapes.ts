@@ -173,8 +173,18 @@ function drawDashedLine(page: any, start: { x: number; y: number }, end: { x: nu
   }
 }
 
+// Same fix, for the handful of call sites below that draw a short label
+// directly (single line, no wrapping needed) rather than through wrapText.
+function sanitizeText(text: string): string {
+  return (text || '').replace(/\s+/g, ' ').trim();
+}
+
 function wrapText(text: string, font: any, size: number, maxWidth: number): string[] {
-  const words = (text || '').split(' ');
+  // Same root-cause fix as lib/inb-generator.ts's wrapText (2026-07-20):
+  // collapse all whitespace/newlines before splitting so a raw control
+  // character from AI-generated label/content text can never reach
+  // page.drawText and trip pdf-lib's WinAnsi encoding.
+  const words = (text || '').replace(/\s+/g, ' ').trim().split(' ');
   const lines: string[] = [];
   let current = '';
   for (const word of words) {
@@ -263,7 +273,7 @@ export function drawLayeredBook(page: any, opts: {
     page.drawText(`Layer ${i + 1} of ${count} — glue/staple along this line`, { x: x + 4, y: topY - 8, size: 6.5, font, color: GRAY });
 
     const label = labels[i] || `Layer ${i + 1}`;
-    page.drawText(label, { x: x + 8, y: topY - 24, size: 10, font: boldFont, color: BLACK });
+    page.drawText(sanitizeText(label), { x: x + 8, y: topY - 24, size: 10, font: boldFont, color: BLACK });
 
     const contentLines = wrapText(contents[i] || '', font, 8, width - 16);
     let cy = topY - 38;
@@ -750,7 +760,7 @@ export function drawRecordingSheet(page: any, opts: {
     const label = labels[i] || '';
     if (label) {
       const lw = font.widthOfTextAtSize(label, 7);
-      page.drawText(label, { x: cx + 18, y: cy + 9, size: 7, font, color: GRAY });
+      page.drawText(sanitizeText(label), { x: cx + 18, y: cy + 9, size: 7, font, color: GRAY });
       void lw;
     }
     page.drawLine({ start: { x: cx + 18, y: cy - 2 }, end: { x: cx + colW - 12, y: cy - 2 }, thickness: 0.75, color: BLACK });
