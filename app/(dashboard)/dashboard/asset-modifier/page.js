@@ -42,6 +42,11 @@ function AssetModifierInner() {
   const sourcePartId = searchParams.get('sourcePartId') || null;
   const initialTool = searchParams.get('tool') || 'select';
   const initialFontFamily = searchParams.get('fontFamily') || '';
+  // Handoff from Style Lab's AI Instruction Removal box (Aj, 2026-07-19):
+  // instructions that aren't removals (e.g. "add a border") route here
+  // instead, pre-filled and ready to run -- this is "the modifier" that
+  // knows how to actually add/change things, not just erase.
+  const initialAiInstruction = searchParams.get('aiInstruction') || '';
 
   const [userId, setUserId] = useState(null);
   const canvasElRef = useRef(null);
@@ -66,7 +71,7 @@ function AssetModifierInner() {
   const [title, setTitle] = useState(initialTitle);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(null);
-  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiInstruction, setAiInstruction] = useState(initialAiInstruction);
   const [applyingAI, setApplyingAI] = useState(false);
   const [aiMsg, setAiMsg] = useState(null);
   const [cropping, setCropping] = useState(false);

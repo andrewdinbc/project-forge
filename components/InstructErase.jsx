@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 // AI Instruction Removal (Aj, 2026-07-19): "I want there to be an AI box
 // that I can write instructions in such as 'remove Morpho Science from each
@@ -8,11 +9,21 @@ import { useState } from 'react';
 // VisualComponents -- describe what to remove, run it across one page or
 // every page at once, review the results as thumbnails (each auto-saved to
 // Parts Library), no per-component clicking required.
+//
+// 2026-07-19, later same day: this box only ever REMOVES (inpaint-erase) --
+// it has no way to ADD something (a border, a new element). Rather than
+// half-fake that here, "→ Send to Style Editor" routes the same typed
+// instruction to Asset Modifier instead, pre-filled with this page's image
+// and ready to run -- Aj: "it will know which modifier and where to put
+// it." Removal instructions stay right here; anything additive/transformative
+// goes there.
 export default function InstructErase({ userId, resourceId }) {
+  const router = useRouter();
   const [instruction, setInstruction] = useState('');
   const [scope, setScope] = useState('all'); // 'all' | 'current'
   const [pageNum, setPageNum] = useState(1);
   const [running, setRunning] = useState(false);
+  const [sending, setSending] = useState(false);
   const [summary, setSummary] = useState(null);
   const [results, setResults] = useState([]);
 
@@ -37,15 +48,42 @@ export default function InstructErase({ userId, resourceId }) {
     }
   }
 
+  // Sends the same typed instruction to the Style Editor (Asset Modifier)
+  // instead of trying to remove-match it here -- for "add a border", "make
+  // the title bigger", or anything else that isn't a removal.
+  async function sendToStyleEditor() {
+    if (!instruction.trim() || sending) return;
+    setSending(true);
+    try {
+      let imageUrl = null;
+      try {
+        const res = await fetch('/api/style-lab/analyze-components', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, resourceId, page: scope === 'current' ? pageNum : 1 }),
+        });
+        const d = await res.json();
+        if (res.ok) imageUrl = d.analysis?.imageUrl;
+      } catch { /* still navigate even if the preview fetch fails */ }
+      const params = new URLSearchParams({ title: 'Style Editor edit', aiInstruction: instruction.trim() });
+      if (imageUrl) params.set('assetUrl', imageUrl);
+      router.push(`/dashboard/asset-modifier?${params.toString()}`);
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div style={{ marginBottom: 14, padding: 12, background: '#fff', border: '1px solid #d9b8e8', borderRadius: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#7a3c8a', marginBottom: 4 }}>🪄 AI Instruction Removal</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#7a3c8a', marginBottom: 4 }}>🪄 AI Instruction</div>
       <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-        Describe what to remove and it finds and blends it out on its own -- no manual toggling.
+        <strong>Remove</strong> something (e.g. "remove Morpho Science from each page") and Apply handles
+        it right here. Want to <strong>add or change</strong> something instead (e.g. "add a border",
+        "make the title bigger")? Same box -- click "Send to Style Editor →" and it opens there with
+        this image and instruction already loaded.
       </p>
       <input
         type="text" value={instruction} onChange={(e) => setInstruction(e.target.value)}
-        placeholder={'e.g. Remove "Morpho Science" from each page'}
+        placeholder={'e.g. Remove "Morpho Science" from each page -- or "add a thin gold border"'}
         disabled={running}
         onKeyDown={(e) => { if (e.key === 'Enter') run(); }}
         style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid #d9b8e8', borderRadius: 4, boxSizing: 'border-box' }}
@@ -65,10 +103,17 @@ export default function InstructErase({ userId, resourceId }) {
             style={{ width: 44, fontSize: 11, padding: '2px 4px', border: '1px solid #d9b8e8', borderRadius: 4 }}
           />
         </label>
-        <button onClick={run} disabled={running || !instruction.trim()}
-          style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 5, padding: '5px 14px', cursor: running || !instruction.trim() ? 'default' : 'pointer', opacity: running || !instruction.trim() ? 0.6 : 1 }}>
-          {running ? 'Working…' : 'Apply'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button onClick={sendToStyleEditor} disabled={sending || !instruction.trim()}
+            title="For additions/changes instead of removals"
+            style={{ fontSize: 12, fontWeight: 600, color: '#7a3c8a', background: '#fff', border: '1px solid #7a3c8a', borderRadius: 5, padding: '5px 14px', cursor: sending || !instruction.trim() ? 'default' : 'pointer', opacity: sending || !instruction.trim() ? 0.6 : 1 }}>
+            {sending ? 'Opening…' : '🖌 Send to Style Editor →'}
+          </button>
+          <button onClick={run} disabled={running || !instruction.trim()}
+            style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 5, padding: '5px 14px', cursor: running || !instruction.trim() ? 'default' : 'pointer', opacity: running || !instruction.trim() ? 0.6 : 1 }}>
+            {running ? 'Working…' : 'Apply'}
+          </button>
+        </div>
       </div>
 
       {summary?.error && <p style={{ fontSize: 11, color: '#a33', marginTop: 8 }}>{summary.error}</p>}

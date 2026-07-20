@@ -50,6 +50,18 @@ export default function StyleLabPage() {
   const [savedToLibrary, setSavedToLibrary] = useState({}) // resourceId -> true, for Parts Library star button
   const router = useRouter()
 
+  // Review deck (Aj, 2026-07-19): "I want this to be all it shows when you
+  // open Style Lab" -- one resource's AI Instruction box + Visual components
+  // panel, full page, with a big NEXT button to move through every uploaded
+  // PDF. Everything else (import, blends, TPT prep, the old per-resource
+  // management list) still exists, behind "Manage Library" instead of being
+  // the default.
+  const [reviewIndex, setReviewIndex] = useState(0)
+  const [manageOpen, setManageOpen] = useState(false)
+  function nextReview() {
+    setReviewIndex((i) => (resources.length > 1 ? (i + 1) % resources.length : 0))
+  }
+
   // Per Aj, 2026-07-19: replaces "Push to AI Steering" / "Mark for TPT" on
   // the resource card with a single entry into the Asset Modifier. Uses the
   // resource's cached analyzed-page image if there is one; otherwise
@@ -537,13 +549,79 @@ export default function StyleLabPage() {
   if (loading) return <div style={{ padding: 40, fontFamily: FONT_BODY }}>Loading…</div>
 
   return (
-    <div style={{ fontFamily: FONT_BODY, maxWidth: 900, margin: '0 auto', padding: '24px 20px' }}>
+    <div style={{ fontFamily: FONT_BODY, maxWidth: 1000, margin: '0 auto', padding: '24px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <h1 style={{ color: C.navy, fontSize: 22, margin: 0 }}>🎨 Style Lab</h1>
-        <a href="/dashboard/style-lab/gallery" style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
-          🔍 Browse for Inspiration
-        </a>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setManageOpen((v) => !v)}
+            style={{ fontSize: 12, fontWeight: 600, color: '#2f6b41', background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}
+          >
+            {manageOpen ? '✕ Close Library' : '🗂 Manage Library'}
+          </button>
+          <a href="/dashboard/style-lab/gallery" style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', borderRadius: 6, padding: '6px 12px', textDecoration: 'none' }}>
+            🔍 Browse for Inspiration
+          </a>
+        </div>
       </div>
+
+      {resources.length === 0 ? (
+        <div style={{ background: '#fff', border: '1px solid #d9b8e8', borderRadius: 8, padding: 24, textAlign: 'center', marginTop: 16 }}>
+          <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>Nothing here yet -- import a PDF to start reviewing.</p>
+          <button
+            onClick={() => setManageOpen(true)}
+            style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#7a3c8a', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
+          >
+            🗂 Open Manage Library to import
+          </button>
+        </div>
+      ) : (() => {
+        const r = resources[reviewIndex % resources.length]
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.navy }}>
+                  {r.title} <span style={{ fontSize: 10, color: '#999', fontWeight: 400 }}>({r.source_type === 'pdf' ? 'PDF' : 'URL'})</span>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: (STATUS_LABELS[r.status] || STATUS_LABELS.raw).color }}>
+                  {(STATUS_LABELS[r.status] || STATUS_LABELS.raw).label}
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: '#888' }}>{(reviewIndex % resources.length) + 1} of {resources.length}</div>
+            </div>
+
+            {/* Big NEXT button, above the AI Instruction box's Apply row
+                (Aj, 2026-07-19): "Above APPLY there should be a big NEXT
+                button that brings me to the NEXT PDF I uploaded." */}
+            <button
+              onClick={nextReview} disabled={resources.length <= 1}
+              style={{
+                display: 'block', width: '100%', marginBottom: 14, padding: '14px 16px',
+                background: C.navy, color: '#fff', border: 'none', borderRadius: 8,
+                fontSize: 16, fontWeight: 700, cursor: resources.length <= 1 ? 'default' : 'pointer',
+                opacity: resources.length <= 1 ? 0.5 : 1,
+              }}
+            >
+              ⏭ NEXT PDF →
+            </button>
+
+            {r.file_url && (!r.source_type || r.source_type === 'pdf') ? (
+              <div key={r.id}>
+                <InstructErase userId={userId} resourceId={r.id} />
+                <VisualComponents userId={userId} resourceId={r.id} />
+              </div>
+            ) : (
+              <div style={{ padding: 40, textAlign: 'center', border: '1px dashed #ccc', borderRadius: 8, color: '#999', fontSize: 12, background: '#fafafa' }}>
+                This is a URL resource, not a PDF -- nothing to preview here. Use "NEXT PDF" to move on.
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {manageOpen && (
+      <div style={{ marginTop: 28, paddingTop: 20, borderTop: `2px dashed ${C.border}` }}>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 12 }}>
         Everything you've uploaded or linked while building resources lands here. Edit it down to the parts you actually want, then either make it a standing AI preference or flag it for a future TPT listing.
       </p>
@@ -1073,6 +1151,8 @@ export default function StyleLabPage() {
           </div>
         )
       })}
+      </div>
+      )}
     </div>
   )
 }

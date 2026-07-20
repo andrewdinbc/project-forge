@@ -283,7 +283,7 @@ export default function VisualComponents({ userId, resourceId }) {
                 const search = fontSearch[f];
                 const buyUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${f}" font commercial license buy`)}`;
                 return (
-                  <div key={i}>
+                  <div key={i} style={{ marginBottom: !isSystem ? 6 : 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 10, color: '#333', background: '#f0ece3', borderRadius: 4, padding: '2px 6px' }}>{f}</span>
                       {!isSystem && (
@@ -295,19 +295,24 @@ export default function VisualComponents({ userId, resourceId }) {
                           <a href={buyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: '#2f6b41', textDecoration: 'underline' }}>
                             💳 Buy this font
                           </a>
-                          <a
-                            href={`/dashboard/asset-modifier?${new URLSearchParams({
-                              tool: 'text',
-                              title: `${f} lettering`,
-                              ...(search?.data?.alternatives?.[0]?.name ? { fontFamily: search.data.alternatives[0].name } : {}),
-                            }).toString()}`}
-                            style={{ fontSize: 9, color: '#1c3557', textDecoration: 'underline' }}
-                          >
-                            🔤 Push to Font Modifier
-                          </a>
                         </>
                       )}
                     </div>
+                    {!isSystem && (
+                      <a
+                        href={`/dashboard/asset-modifier?${new URLSearchParams({
+                          tool: 'text',
+                          title: `${f} lettering`,
+                          ...(search?.data?.alternatives?.[0]?.name ? { fontFamily: search.data.alternatives[0].name } : {}),
+                        }).toString()}`}
+                        style={{
+                          display: 'inline-block', marginTop: 4, fontSize: 13, fontWeight: 700, color: '#fff',
+                          background: '#1c3557', borderRadius: 6, padding: '8px 16px', textDecoration: 'none',
+                        }}
+                      >
+                        🔤 Push to Font Modifier
+                      </a>
+                    )}
                     {search?.error && <p style={{ fontSize: 9, color: '#a33', margin: '2px 0 0 4px' }}>{search.error}</p>}
                     {search?.data && (
                       <div style={{ margin: '4px 0 4px 4px', padding: '6px 8px', background: '#fafafa', border: '1px solid #eee', borderRadius: 6 }}>
