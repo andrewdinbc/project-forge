@@ -22,6 +22,17 @@ import { STYLE_CATEGORIES } from '@/lib/product-builder-categories'
 // pattern (/api/library-parts/pattern-suggestions), so the box pre-fills
 // with what Aj has actually done before for that category on future
 // batches -- a real memory of his own edit habits, not a guess.
+//
+// Find Free Match (Aj, 2026-07-20): "search [free/open-license sites] for
+// near equivalent ones that I can use for free." An alternative to editing
+// the raw extraction -- search genuinely open-license sources (Google
+// Fonts / OpenClipart / Openverse) using this item's own title+notes as
+// the query, then swap the pending pixel-extraction for a free-license
+// asset entirely. /api/style-match/save deletes the pending row server-side
+// once a match is picked, so it just disappears from this list -- no
+// separate dismiss step needed.
+const MATCH_SEARCHABLE = new Set(['border', 'section_header', 'icon_illustration', 'font_reference'])
+
 export default function PendingReview({ userId, refreshKey }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -32,6 +43,15 @@ export default function PendingReview({ userId, refreshKey }) {
   const [applying, setApplying] = useState(false)
   const [batchMsg, setBatchMsg] = useState(null)
   const [localRefresh, setLocalRefresh] = useState(0)
+
+  // Find Free Match state -- keyed by pending item id so multiple panels
+  // could in principle be open, though the UI only opens one at a time.
+  const [matchOpenId, setMatchOpenId] = useState(null)
+  const [matchLoading, setMatchLoading] = useState(false)
+  const [matchResults, setMatchResults] = useState([])
+  const [matchError, setMatchError] = useState(null)
+  const [matchSourcesQueried, setMatchSourcesQueried] = useState([])
+  const [savingMatchUrl, setSavingMatchUrl] = useState(null)
 
   useEffect(() => {
     if (!userId) return
@@ -77,6 +97,7 @@ export default function PendingReview({ userId, refreshKey }) {
       await fetch(`/api/library-parts?userId=${userId}&id=${id}`, { method: 'DELETE' })
       setItems((prev) => prev.filter((p) => p.id !== id))
       setSelected((prev) => { const next = new Set(prev); next.delete(id); return next })
+      if (matchOpenId === id) setMatchOpenId(null)
     } finally {
       setBusyId(null)
     }
@@ -115,6 +136,62 @@ export default function PendingReview({ userId, refreshKey }) {
     }
   }
 
+  async function openMatchFinder(item) {
+    if (matchOpenId === item.id) { setMatchOpenId(null); return }
+    setMatchOpenId(item.id)
+    setMatchResults([])
+    setMatchError(null)
+    setMatchLoading(true)
+    try {
+      // Query is the item's own title with the category label stripped off
+      // (e.g. "Sur ma pizza border" -> "Sur ma pizza"), plus a plain-language
+      // nudge toward the category so results stay on-topic.
+      const catLabel = STYLE_CATEGORIES.find((c) => c.key === item.category)?.label || item.category
+      const bareTitle = item.title.replace(new RegExp(catLabel, 'i'), '').trim()
+      const query = item.category === 'font_reference'
+        ? `${item.title} style font for a children's teaching resource`
+        : `${bareTitle || item.title} ${catLabel.toLowerCase()} for a teaching resource`
+      const res = await fetch('/api/style-match/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: item.category, query }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setMatchResults(data.results || [])
+      setMatchSourcesQueried(data.sourcesQueried || [])
+      if (data.errors?.length) setMatchError(data.errors.join(' · '))
+    } catch (e) {
+      setMatchError(e.message)
+    } finally {
+      setMatchLoading(false)
+    }
+  }
+
+  async function useMatch(item, candidate) {
+    setSavingMatchUrl(candidate.previewUrl || candidate.sourceUrl)
+    try {
+      const res = await fetch('/api/style-match/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId, category: item.category, title: candidate.title,
+          previewUrl: candidate.previewUrl, sourceUrl: candidate.sourceUrl,
+          source: candidate.source, license: candidate.license, licenseUrl: candidate.licenseUrl,
+          requiresAttribution: candidate.requiresAttribution, attributionText: candidate.attributionText,
+          replacesPendingId: item.id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not save this match')
+      setItems((prev) => prev.filter((p) => p.id !== item.id))
+      setSelected((prev) => { const next = new Set(prev); next.delete(item.id); return next })
+      setMatchOpenId(null)
+    } catch (e) {
+      setMatchError(e.message)
+    } finally {
+      setSavingMatchUrl(null)
+    }
+  }
+
   if (loading || items.length === 0) return null
 
   const byCategory = {}
@@ -131,7 +208,8 @@ export default function PendingReview({ userId, refreshKey }) {
         Raw crops from Separator -- direct pixels from someone else's PDF, not yet changed by you, so
         they don't count as Parts Library items yet. Check items and use Bulk Edit below to apply one
         change to several at once (the copyright-safe edit step, just done in batches), edit
-        individually, or Dismiss to throw one away.
+        individually, use <strong>Find Free Match</strong> to swap it for a genuinely open-license
+        equivalent instead, or Dismiss to throw one away.
       </p>
 
       {selected.size > 0 && (
@@ -186,29 +264,75 @@ export default function PendingReview({ userId, refreshKey }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8 }}>
               {catItems.map((p) => (
-                <div key={p.id} style={{ background: '#fff', border: selected.has(p.id) ? '2px solid #7a3c8a' : '1px solid #e8d9b0', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
-                  <label style={{ position: 'absolute', top: 4, left: 4, zIndex: 1, background: 'rgba(255,255,255,0.85)', borderRadius: 4, padding: 2 }}>
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
-                  </label>
-                  {p.file_url ? (
-                    <img src={p.file_url} alt={p.title} style={{ width: '100%', height: 70, objectFit: 'cover', display: 'block' }} />
-                  ) : (
-                    <div style={{ width: '100%', height: 70, background: '#f5efe0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{cat.icon}</div>
-                  )}
-                  <div style={{ padding: 5 }}>
-                    <p style={{ fontSize: 9, color: '#555', margin: 0, lineHeight: 1.3 }} title={p.title}>{p.title}</p>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-                      <a
-                        href={`/dashboard/asset-modifier?${new URLSearchParams({ assetUrl: p.file_url || '', title: p.title || 'Asset', sourcePartId: p.id, category: p.category, fromPending: '1' }).toString()}`}
-                        style={{ fontSize: 9, color: '#7a3c8a', textDecoration: 'underline' }}
-                      >
-                        Edit
-                      </a>
-                      <button onClick={() => dismiss(p.id)} disabled={busyId === p.id} style={{ fontSize: 9, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                        {busyId === p.id ? '…' : 'Dismiss'}
-                      </button>
+                <div key={p.id} style={{ gridColumn: matchOpenId === p.id ? '1 / -1' : undefined }}>
+                  <div style={{ background: '#fff', border: selected.has(p.id) ? '2px solid #7a3c8a' : '1px solid #e8d9b0', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                    <label style={{ position: 'absolute', top: 4, left: 4, zIndex: 1, background: 'rgba(255,255,255,0.85)', borderRadius: 4, padding: 2 }}>
+                      <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
+                    </label>
+                    {p.file_url ? (
+                      <img src={p.file_url} alt={p.title} style={{ width: '100%', height: 70, objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: 70, background: '#f5efe0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{cat.icon}</div>
+                    )}
+                    <div style={{ padding: 5 }}>
+                      <p style={{ fontSize: 9, color: '#555', margin: 0, lineHeight: 1.3 }} title={p.title}>{p.title}</p>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                        <a
+                          href={`/dashboard/asset-modifier?${new URLSearchParams({ assetUrl: p.file_url || '', title: p.title || 'Asset', sourcePartId: p.id, category: p.category, fromPending: '1' }).toString()}`}
+                          style={{ fontSize: 9, color: '#7a3c8a', textDecoration: 'underline' }}
+                        >
+                          Edit
+                        </a>
+                        {MATCH_SEARCHABLE.has(p.category) && (
+                          <button onClick={() => openMatchFinder(p)} style={{ fontSize: 9, color: '#2f6b41', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                            {matchOpenId === p.id ? 'Close' : 'Find Free Match ✨'}
+                          </button>
+                        )}
+                        <button onClick={() => dismiss(p.id)} disabled={busyId === p.id} style={{ fontSize: 9, color: '#a33', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                          {busyId === p.id ? '…' : 'Dismiss'}
+                        </button>
+                      </div>
                     </div>
                   </div>
+
+                  {matchOpenId === p.id && (
+                    <div style={{ background: '#f4faf6', border: '1px solid #bfe0cc', borderRadius: 6, padding: 10, marginTop: 6 }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: '#2f6b41', margin: '0 0 6px' }}>
+                        Searching {matchSourcesQueried.join(' + ') || 'open-license sources'} for something similar…
+                      </p>
+                      {matchLoading && <p style={{ fontSize: 11, color: '#666', margin: 0 }}>Searching…</p>}
+                      {matchError && <p style={{ fontSize: 10, color: '#a33', margin: '0 0 6px' }}>{matchError}</p>}
+                      {!matchLoading && matchResults.length === 0 && !matchError && (
+                        <p style={{ fontSize: 11, color: '#666', margin: 0 }}>No matches found -- try editing the original instead, or dismiss it.</p>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+                        {matchResults.map((c, i) => (
+                          <div key={i} style={{ background: '#fff', border: '1px solid #d8e8dc', borderRadius: 6, overflow: 'hidden' }}>
+                            {c.previewUrl && p.category !== 'font_reference' ? (
+                              <img src={c.previewUrl} alt={c.title} style={{ width: '100%', height: 60, objectFit: 'contain', display: 'block', background: '#fafafa' }} />
+                            ) : (
+                              <div style={{ width: '100%', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontFamily: p.category === 'font_reference' ? c.title : undefined, padding: 4, textAlign: 'center' }}>
+                                {c.title}
+                              </div>
+                            )}
+                            <div style={{ padding: 5 }}>
+                              <p style={{ fontSize: 9, fontWeight: 600, margin: '0 0 2px' }} title={c.title}>{c.title}</p>
+                              <p style={{ fontSize: 8, color: c.requiresAttribution ? '#a06b1f' : '#2f6b41', margin: '0 0 4px' }}>
+                                {c.requiresAttribution ? `⚠ Credit required · ${c.license}` : `✓ ${c.license}`}
+                              </p>
+                              <button
+                                onClick={() => useMatch(p, c)}
+                                disabled={savingMatchUrl === (c.previewUrl || c.sourceUrl)}
+                                style={{ fontSize: 9, width: '100%', padding: '4px 0', background: '#2f6b41', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                              >
+                                {savingMatchUrl === (c.previewUrl || c.sourceUrl) ? 'Saving…' : 'Use this instead'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
