@@ -1,7 +1,7 @@
 // lib/comic-generator.ts (Aj, 2026-07-21): "Classroom Current Events
 // Periodical" Schema's comic-book-style branch -- a black-and-white,
 // cheap-to-print comic reader generator usable for ANY subject, in two
-// modes:
+// story modes:
 //   - 'topic': a standalone comic-book article on a subject/topic of choice
 //   - 'weekly': curates this actual school week's Daily Planner subjects
 //     (via daily_plans) plus assemblies/guest speakers/special events (via
@@ -9,11 +9,23 @@
 //     comic -- see app/api/comic-generator/generate/route.ts for the
 //     digest query, this file only knows about already-formatted context.
 //
+// ...and two art modes (2026-07-21, per Aj: "I do not have to AI generate
+// all of this... I suspect it will become rather costly"):
+//   - 'full': every panel gets a fresh AI-illustrated scene (original
+//     behavior, most visual variety, costs one image-gen call per panel).
+//   - 'cast': panels reuse a small pre-generated REUSABLE character library
+//     (5 characters x 4 poses, generated once, stored in library_parts,
+//     category='comic-character') -- Fox Fable/Owl Professor/Robot Scout
+//     (Math Mastery's existing mascots, restyled into this B&W comic look
+//     via reference-image-guided generation so the character design stays
+//     the same) plus two new original student characters, Kai and Zoe, for
+//     weekly-reader narratives. Zero AI image calls per generation in cast
+//     mode -- the AI script step just PICKS characters+poses from the
+//     catalog, and the panel embeds already-generated cached images. This
+//     is the actual cost lever: pay once for the cast, reuse indefinitely.
+//
 // Panels are real vector geometry (borders, caption boxes, speech
-// bubbles) drawn with pdf-lib, same approach as lib/foldable-shapes.ts --
-// only the panel ILLUSTRATION itself is an AI-generated image (via
-// lib/design-assets-gen.ts, 'line_art' B&W style), embedded inside the
-// vector panel border so it prints cleanly in black and white.
+// bubbles) drawn with pdf-lib, same approach as lib/foldable-shapes.ts.
 
 import { rgb } from 'pdf-lib';
 import { wrapLines } from './worksheet-pdf';
@@ -36,6 +48,72 @@ export interface ComicScript {
   title: string;
   panels: ComicPanelScript[];
   literacyQuestions: string[];
+}
+
+// The reusable cast catalog. characterId values are the stable keys used
+// both in library_parts.source_id ("comic-cast:<characterId>:<pose>") and
+// in the AI's cast-mode script JSON. Keep in sync with the actual rows in
+// library_parts (category='comic-character') -- this const is the prompt-
+// facing description of what's available, the DB rows are the real asset
+// lookup, fetched live in the API route so new poses/characters can be
+// added later without a code change on the lookup side.
+export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student'; description: string; poses: string[] }[] = [
+  { id: 'fox-fable', name: 'Fox Fable', type: 'mascot', description: 'a clever, encouraging fox mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'owl-professor', name: 'Owl Professor', type: 'mascot', description: 'a wise, bespectacled owl mascot who explains things (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'robot-scout', name: 'Robot Scout', type: 'mascot', description: 'a helpful, curious robot mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'kai', name: 'Kai', type: 'student', description: 'an original student character -- curious, curly hair, glasses, backpack', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'zoe', name: 'Zoe', type: 'student', description: 'an original student character -- determined, braided hair, favorite jacket', poses: ['base', 'happy', 'thinking', 'pointing'] },
+];
+
+export interface CastPanelScript {
+  characters: { characterId: string; pose: string }[];
+  caption?: string;
+  dialogue?: ComicDialogueLine[];
+}
+
+export interface CastComicScript {
+  title: string;
+  panels: CastPanelScript[];
+  literacyQuestions: string[];
+}
+
+export function buildCastComicScriptPrompt(opts: {
+  mode: 'topic' | 'weekly';
+  subject?: string;
+  topic?: string;
+  gradeLevel: string;
+  panelCount: number;
+  weeklyContext?: string;
+}): string {
+  const { mode, subject, topic, gradeLevel, panelCount, weeklyContext } = opts;
+  const castDescriptions = COMIC_CAST_CATALOG.map((c) => `- "${c.id}" (${c.name}): ${c.description}. Available poses: ${c.poses.join(', ')}.`).join('\n');
+
+  const base = mode === 'weekly'
+    ? `You are writing a SHORT COMIC-BOOK-STYLE SCRIPT for a Grade ${gradeLevel} classroom "weekly reader" comic. Weave together, as ONE light narrative, everything really happening this week per the digest below -- each subject's topic and each special event should show up as a real story beat.\n\nThis week's digest:\n${weeklyContext}`
+    : `You are writing a SHORT COMIC-BOOK-STYLE SCRIPT that teaches Grade ${gradeLevel} students about a real subject topic through a narrative story with characters, not a dry list of facts.\n\nSubject: ${subject}\nTopic: ${topic}`;
+
+  return `${base}
+
+IMPORTANT: this comic uses a FIXED, PRE-DRAWN cast -- you cannot invent new characters or scenes. Every panel must use ONLY the characters below, and for each character used in a panel you must pick one of their available poses:
+${castDescriptions}
+
+Guidance: Kai and Zoe (the students) make the most sense as the recurring narrators/protagonists moving through the story. The three mascots (Fox Fable, Owl Professor, Robot Scout) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
+
+Write exactly ${panelCount} panels telling one coherent short story start-to-finish (a setup, a small complication or question, a resolution that lands on the real content). Each panel needs:
+- "characters": array of 1-2 {"characterId": one of the ids above, "pose": one of that character's available poses}. Pick the pose that matches the emotional beat (e.g. "thinking" when puzzling something out, "happy" for a resolution, "pointing" when explaining/teaching).
+- "caption": OPTIONAL short narrator caption box text (empty string if not needed).
+- "dialogue": array of {"speaker": character name, "line": short spoken line under 15 words, grade-${gradeLevel}-appropriate}, 0-2 per panel.
+
+Then write "literacyQuestions": exactly 4 short reading-response questions mixing recall, personal connection, and inference/opinion prompts, grade-${gradeLevel}-appropriate.
+
+Also write "title": a short, fun title for this comic issue.
+
+Respond with ONLY valid JSON, no prose, no markdown fences:
+{
+  "title": string,
+  "panels": [{"characters": [{"characterId": string, "pose": string}], "caption": string, "dialogue": [{"speaker": string, "line": string}]}],
+  "literacyQuestions": [string]
+}`;
 }
 
 // A single reusable B&W line-art suffix for comic panels specifically --
@@ -119,11 +197,13 @@ export function drawComicCoverPage(page: any, opts: {
 }
 
 // Draws up to 6 panels (2 cols x 3 rows) on one page: bordered panel with
-// the AI-generated B&W illustration fitted inside, an optional caption box
-// in the top-left corner, and up to 2 stacked speech bubbles along the
-// bottom -- classic comic-strip composition, kept simple and high-contrast
-// so it photocopies/prints well.
-export function drawComicPage(page: any, panels: { image: any; caption?: string; dialogue?: ComicDialogueLine[] }[], opts: {
+// either a single full-scene AI illustration (full art mode) or 1-2
+// reusable cast character cutouts laid out side by side (cast mode)
+// fitted inside, an optional caption box in the top-left corner, and up
+// to 2 stacked speech bubbles along the bottom -- classic comic-strip
+// composition, kept simple and high-contrast so it photocopies/prints
+// well.
+export function drawComicPage(page: any, panels: { images: any[]; caption?: string; dialogue?: ComicDialogueLine[] }[], opts: {
   width: number; height: number; font: any; boldFont: any; issueTitle: string; pageLabel: string;
 }) {
   const { width, height, font, boldFont, issueTitle, pageLabel } = opts;
@@ -155,19 +235,26 @@ export function drawComicPage(page: any, panels: { image: any; caption?: string;
     page.drawRectangle({ x, y: yBottom, width: cellW, height: cellH, borderColor: rgb(0, 0, 0), borderWidth: 2.5, color: rgb(1, 1, 1) });
 
     const inset = 5;
-    if (p.image) {
+    const images = (p.images || []).filter(Boolean);
+    if (images.length > 0) {
       try {
-        const dims = p.image.scale(1);
-        const availW = cellW - inset * 2;
-        const availH = cellH - inset * 2;
-        const scale = Math.min(availW / dims.width, availH / dims.height);
-        const drawW = dims.width * scale;
-        const drawH = dims.height * scale;
-        page.drawImage(p.image, {
-          x: x + (cellW - drawW) / 2,
-          y: yBottom + (cellH - drawH) / 2,
-          width: drawW,
-          height: drawH,
+        // Split the panel width evenly across 1-2 character images so two
+        // characters in one panel sit side by side rather than overlapping.
+        const slotW = (cellW - inset * 2) / images.length;
+        images.forEach((img: any, imgIdx: number) => {
+          const dims = img.scale(1);
+          const availW = slotW - 4;
+          const availH = cellH - inset * 2;
+          const scale = Math.min(availW / dims.width, availH / dims.height);
+          const drawW = dims.width * scale;
+          const drawH = dims.height * scale;
+          const slotX = x + inset + imgIdx * slotW;
+          page.drawImage(img, {
+            x: slotX + (slotW - drawW) / 2,
+            y: yBottom + (cellH - drawH) / 2,
+            width: drawW,
+            height: drawH,
+          });
         });
       } catch { /* fall through to blank panel -- caption/dialogue still render */ }
     } else {
