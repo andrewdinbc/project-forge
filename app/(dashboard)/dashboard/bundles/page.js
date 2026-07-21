@@ -50,6 +50,9 @@ export default function BundlesPage() {
           <Link href="/dashboard/worksheet-generators" className="btn-secondary">
             🧮 Worksheet Generators
           </Link>
+          <Link href="/dashboard/bundles/auto-generate" className="btn-secondary">
+            🪄 Auto-Generate from Curriculum
+          </Link>
           <Link href="/dashboard/bundles/new" className="btn-primary">
             ➕ New Bundle
           </Link>
