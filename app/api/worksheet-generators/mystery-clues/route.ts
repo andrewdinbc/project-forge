@@ -30,8 +30,12 @@ export async function POST(request: NextRequest) {
 
     const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 700, messages: [{ role: 'user', content: prompt }] });
     const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '{}';
+    // 2026-07-21: extract the {...} object rather than assuming the whole
+    // response is JSON (see word-ladders fix, same root cause).
+    const objMatch = raw.match(/\{[\s\S]*\}/);
+    const jsonText = objMatch ? objMatch[0] : raw.replace(/```json|```/g, '').trim();
     let data: any = {};
-    try { data = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { data = {}; }
+    try { data = JSON.parse(jsonText); } catch { data = {}; }
     const clues: string[] = Array.isArray(data.clues) ? data.clues : [];
     if (clues.length < 5) return NextResponse.json({ error: 'Could not generate clues -- try again' }, { status: 500 });
 
