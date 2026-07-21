@@ -142,17 +142,49 @@ export async function POST(request: NextRequest) {
   try {
     const {
       userId, topic, mode, gradeLevel, borderPartId, headerPartId, illustrationUrl, title,
+      precomposedLevels, returnJson,
     } = (await request.json()) || {};
     if (!userId || !topic?.trim()) return NextResponse.json({ error: 'userId and topic are required' }, { status: 400 });
     if (!gradeLevel || Number.isNaN(Number(gradeLevel))) return NextResponse.json({ error: 'gradeLevel (a number, e.g. 3) is required' }, { status: 400 });
     const baseGrade = Number(gradeLevel);
     const isDifferentiated = mode === 'differentiated';
 
-    const levelPlan = isDifferentiated
-      ? TIERS.map((t) => ({ label: t.label, grade: Math.max(0.5, baseGrade + t.offset) }))
-      : [{ label: null, grade: baseGrade }];
+    // Asset Modifier handoff (Aj, 2026-07-20): "loaded into asset modifier
+    // so I can adjust and modify... AI writing box... drag tool." Two new
+    // paths share this same route rather than forking a parallel one:
+    // - precomposedLevels: skip the AI-writing call entirely and use this
+    //   exact (possibly hand-edited in Asset Modifier) text, but still run
+    //   it through fleschKincaidGrade scoring and the real PDF/theme
+    //   pipeline -- so an edited passage still gets a proper polished PDF,
+    //   not a rasterized screenshot of the editor canvas.
+    // - returnJson: skip PDF assembly and return the structured level data
+    //   as JSON instead, for the generator UI to hand off into Asset
+    //   Modifier as separate editable Textbox objects.
+    let levels: any[];
+    if (Array.isArray(precomposedLevels) && precomposedLevels.length) {
+      levels = precomposedLevels.map((lvl: any) => {
+        const scored = fleschKincaidGrade(lvl.passage);
+        return {
+          levelLabel: lvl.levelLabel || 'Passage',
+          targetGrade: Number(lvl.targetGrade),
+          actualGrade: scored.grade,
+          gradeGapFlag: Math.abs(scored.grade - Number(lvl.targetGrade)) > 2.5,
+          exemplarsUsed: [],
+          title: lvl.title, passage: lvl.passage,
+          annotationGuide: lvl.annotationGuide || [], questions: lvl.questions || [],
+        };
+      });
+    } else {
+      const levelPlan = isDifferentiated
+        ? TIERS.map((t) => ({ label: t.label, grade: Math.max(0.5, baseGrade + t.offset) }))
+        : [{ label: null, grade: baseGrade }];
+      levels = await Promise.all(levelPlan.map((p) => generateLevel(topic.trim(), p.grade, p.label)));
+    }
 
-    const levels = await Promise.all(levelPlan.map((p) => generateLevel(topic.trim(), p.grade, p.label)));
+    if (returnJson) {
+      const docTitleForJson = title?.trim() || `Reading Passage: ${topic.trim()}`;
+      return NextResponse.json({ docTitle: docTitleForJson, levels });
+    }
 
     const theme = await loadPartsTheme(userId, borderPartId, headerPartId);
     const { doc, helv, helvBold } = await newWorksheetDoc();
