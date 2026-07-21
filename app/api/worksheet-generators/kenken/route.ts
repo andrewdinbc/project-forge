@@ -239,7 +239,7 @@ function generateKenKen(n: number, difficulty: string, opsOverride?: Op[]) {
   return { solved, cageOf, cages, unverified: true };
 }
 
-const OP_SYMBOL: Record<Op, string> = { '+': '+', '-': '\u2212', 'x': '\u00d7', '/': '\u00f7' };
+const OP_SYMBOL: Record<Op, string> = { '+': '+', '-': '-', 'x': '\u00d7', '/': '\u00f7' };  // fixed 2026-07-20: '-' was U+2212 (math minus), not encodable in pdf-lib's WinAnsi StandardFonts -- crashed KenKen generation on every subtraction cage. Plain ASCII hyphen renders fine and reads the same on a printed page.
 
 export async function POST(request: NextRequest) {
   try {
@@ -321,3 +321,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
 }
+
