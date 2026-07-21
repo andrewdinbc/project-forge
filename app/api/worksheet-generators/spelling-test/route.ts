@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       page.drawText(`${docTitle} -- Look, Say, Cover, Write, Check`, { x: 54, y: PAGE_H - 56, size: 16, font: helvBold, color: NAVY });
       page.drawText('For each word: LOOK at it closely. SAY it out loud. COVER it up. WRITE it from memory. CHECK your spelling.', { x: 54, y: PAGE_H - 78, size: 9, font: helv, color: GRAY });
 
-      const colLabels = ['Word', 'Write 1', 'Write 2', 'Write 3', 'Check \u2713'];
+      const colLabels = ['Word', 'Write 1', 'Write 2', 'Write 3', 'Check'];  // fixed 2026-07-20: dropped the \u2713 checkmark -- not encodable in pdf-lib's WinAnsi StandardFonts, crashed every generation in 'test'/'both' mode (the default)
       const tableLeft = 54, tableTop = PAGE_H - 100, tableW = PAGE_W - 108;
       const colW = [tableW * 0.24, tableW * 0.19, tableW * 0.19, tableW * 0.19, tableW * 0.19];
       const rowH = Math.min(34, (tableTop - 60) / (list.length + 1));
@@ -87,3 +87,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
 }
+
