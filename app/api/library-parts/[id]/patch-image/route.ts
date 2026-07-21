@@ -5,23 +5,34 @@ import sharp from 'sharp';
 // POST /api/library-parts/[id]/patch-image
 //
 // Durable, product-side fix for recurring generation artifacts
-// (2026-07-21). Built directly after a real incident: the exact same
-// stray rectangle showed up in 6 separately-generated border images at
-// nearly identical pixel coordinates, and fixing it required a Claude
-// session to hand-edit files in its own ephemeral sandbox each time --
-// a real single point of failure for a fix that should just be a
-// feature. This makes "erase a known defect region" a permanent,
-// callable capability of the product itself: works via a plain HTTP
-// request, independent of any AI session's tooling being available.
-// Committed via the browser extension's fetch(), not the usual bash+curl
-// path, because the bash sandbox was down when this was built -- proof
-// this fallback path is real, not just documented.
+// (2026-07-21). Built after a real incident: the exact same stray
+// rectangle showed up in 6 separately-generated border images at nearly
+// identical pixel coordinates, and fixing it required a Claude session
+// to hand-edit files in its own ephemeral sandbox each time -- a real
+// single point of failure for a fix that should just be a feature. This
+// makes "erase a known defect region" a permanent, callable capability
+// of the product itself, independent of any AI session's tooling.
+// CORS-enabled (same pattern as math-mastery's /api/analytics and
+// /api/tokens/leaderboard) so it's callable cross-origin, not just from
+// project-forge's own pages.
 //
 // body: { userId, regions?: [{x,y,width,height,color?}], preset?: string }
-// Either pass explicit regions, or a named preset with known-good
-// coordinates for a defect that's recurred enough to be worth naming.
 
 const admin: any = supabaseAdmin;
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+function json(body: any, status = 200) {
+  return NextResponse.json(body, { status, headers: CORS_HEADERS });
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
 
 const KNOWN_DEFECT_PRESETS: Record<string, { x: number; y: number; width: number; height: number }[]> = {
   // The stray placeholder rectangle from the "blank interior, no answer
@@ -34,14 +45,11 @@ const KNOWN_DEFECT_PRESETS: Record<string, { x: number; y: number; width: number
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId, regions, preset } = (await request.json()) || {};
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+    if (!userId) return json({ error: 'userId is required' }, 400);
 
     const appliedRegions = preset ? KNOWN_DEFECT_PRESETS[preset] : regions;
     if (!appliedRegions?.length) {
-      return NextResponse.json(
-        { error: 'Provide regions, or a valid preset name', knownPresets: Object.keys(KNOWN_DEFECT_PRESETS) },
-        { status: 400 }
-      );
+      return json({ error: 'Provide regions, or a valid preset name', knownPresets: Object.keys(KNOWN_DEFECT_PRESETS) }, 400);
     }
 
     const { data: part, error: fetchErr } = await admin
@@ -50,11 +58,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       .eq('id', params.id)
       .eq('user_id', userId)
       .single();
-    if (fetchErr || !part) return NextResponse.json({ error: 'Library part not found' }, { status: 404 });
-    if (!part.file_url) return NextResponse.json({ error: 'This part has no image to patch' }, { status: 400 });
+    if (fetchErr || !part) return json({ error: 'Library part not found' }, 404);
+    if (!part.file_url) return json({ error: 'This part has no image to patch' }, 400);
 
     const imgRes = await fetch(part.file_url);
-    if (!imgRes.ok) return NextResponse.json({ error: `Could not fetch the current image (${imgRes.status})` }, { status: 502 });
+    if (!imgRes.ok) return json({ error: `Could not fetch the current image (${imgRes.status})` }, 502);
     const inputBuffer = Buffer.from(await imgRes.arrayBuffer());
 
     const overlays = appliedRegions.map((r: any) => ({
@@ -74,15 +82,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const path = `${userId}/patched/${Date.now()}-${params.id}.png`;
     const { error: uploadErr } = await admin.storage.from('design-assets').upload(path, outputBuffer, { contentType: 'image/png', upsert: true });
-    if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 500 });
+    if (uploadErr) return json({ error: uploadErr.message }, 500);
 
     const { data: urlData } = admin.storage.from('design-assets').getPublicUrl(path);
 
     const { error: updateErr } = await admin.from('library_parts').update({ file_url: urlData.publicUrl }).eq('id', params.id);
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    if (updateErr) return json({ error: updateErr.message }, 500);
 
-    return NextResponse.json({ ok: true, newFileUrl: urlData.publicUrl, regionsApplied: appliedRegions.length });
+    return json({ ok: true, newFileUrl: urlData.publicUrl, regionsApplied: appliedRegions.length });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || String(e) }, { status: 500 });
+    return json({ error: e.message || String(e) }, 500);
   }
 }
