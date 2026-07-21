@@ -57,12 +57,15 @@ export interface ComicScript {
 // facing description of what's available, the DB rows are the real asset
 // lookup, fetched live in the API route so new poses/characters can be
 // added later without a code change on the lookup side.
-export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student'; description: string; poses: string[] }[] = [
+export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student' | 'brand_mascot' | 'adult'; description: string; poses: string[] }[] = [
   { id: 'fox-fable', name: 'Fox Fable', type: 'mascot', description: 'a clever, encouraging fox mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'owl-professor', name: 'Owl Professor', type: 'mascot', description: 'a wise, bespectacled owl mascot who explains things (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'robot-scout', name: 'Robot Scout', type: 'mascot', description: 'a helpful, curious robot mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'kai', name: 'Kai', type: 'student', description: 'an original student character -- curious, curly hair, glasses, backpack', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'zoe', name: 'Zoe', type: 'student', description: 'an original student character -- determined, braided hair, favorite jacket', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'chip', name: 'Chip', type: 'brand_mascot', description: 'the Chalk & Circuit brand mascot -- a friendly circuit-board character (reused across all Chalk & Circuit products, not just one subject)', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'ms-diaz', name: 'Ms. Diaz', type: 'adult', description: 'an original teacher character -- warm, approachable, glasses and cardigan, good for classroom/assembly scenes needing an adult', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'remy', name: 'Remy Rabbit', type: 'mascot', description: 'a quick-witted, energetic rabbit mascot -- good for fast-paced or excited story beats', poses: ['base', 'happy', 'thinking', 'pointing'] },
 ];
 
 export interface CastPanelScript {
@@ -97,7 +100,7 @@ export function buildCastComicScriptPrompt(opts: {
 IMPORTANT: this comic uses a FIXED, PRE-DRAWN cast -- you cannot invent new characters or scenes. Every panel must use ONLY the characters below, and for each character used in a panel you must pick one of their available poses:
 ${castDescriptions}
 
-Guidance: Kai and Zoe (the students) make the most sense as the recurring narrators/protagonists moving through the story. The three mascots (Fox Fable, Owl Professor, Robot Scout) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
+Guidance: Kai and Zoe (the students) make the most sense as the recurring narrators/protagonists moving through the story. The mascots (Fox Fable, Owl Professor, Robot Scout, Remy Rabbit) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical, Remy Rabbit for a fast-paced or energetic beat. Ms. Diaz (the teacher) fits naturally in classroom or assembly scenes, or any moment that calls for adult guidance. Chip (the Chalk & Circuit brand mascot) is a nice choice for a "welcome" or "wrap-up" panel since it's not tied to any one subject. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
 
 Write exactly ${panelCount} panels telling one coherent short story start-to-finish (a setup, a small complication or question, a resolution that lands on the real content). Each panel needs:
 - "characters": array of 1-2 {"characterId": one of the ids above, "pose": one of that character's available poses}. Pick the pose that matches the emotional beat (e.g. "thinking" when puzzling something out, "happy" for a resolution, "pointing" when explaining/teaching).
