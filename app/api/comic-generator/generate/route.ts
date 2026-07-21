@@ -35,6 +35,57 @@ export const maxDuration = 300;
 // than adding a secret-gated fetch + a new required env var. Defaults
 // lessonPlannerUserId to the Forge userId since Aj's account is the same
 // UUID across both apps.
+// daily_plans rows are seeded lazily -- only created when the teacher
+// actually opens the Daily Planner for that specific date (see
+// lesson-planner's app/api/daily-plan/route.js GET handler). That means a
+// week nobody has clicked into day-by-day yet has zero daily_plans rows
+// even though the Year Timeline already knows what's SUPPOSED to be
+// covered. Same week-number math lesson-planner itself uses
+// (lib/assessment-types.js currentInstructionalWeek, lib/daily-plan.js
+// activeUnitForSubjectThisWeek), reimplemented here read-only so this
+// fallback finds the same answer the teacher would see in-app.
+function weekNumberForDate(schoolOpeningDate: string, targetDate: string): number | null {
+  if (!schoolOpeningDate) return null;
+  const start = new Date(schoolOpeningDate);
+  const target = new Date(targetDate);
+  const diffDays = Math.floor((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return null;
+  return Math.max(1, Math.floor(diffDays / 7) + 1);
+}
+
+async function fetchTimelineFallback(lessonPlannerUserId: string, weekStart: string, weekEnd: string) {
+  const { data: inv } = await admin
+    .from('teacher_inventories')
+    .select('school_calendar_summary')
+    .eq('user_id', lessonPlannerUserId)
+    .maybeSingle();
+  const openingDate = inv?.school_calendar_summary?.schoolOpeningDate;
+  if (!openingDate) return [];
+
+  const startWeek = weekNumberForDate(openingDate, weekStart);
+  const endWeek = weekNumberForDate(openingDate, weekEnd);
+  if (!startWeek) return [];
+  const lo = startWeek;
+  const hi = endWeek || startWeek;
+
+  const { data: units, error } = await admin
+    .from('timeline_units')
+    .select('subject, unit_name, start_week, end_week')
+    .eq('user_id', lessonPlannerUserId);
+  if (error || !units) return [];
+
+  // A unit is "active" this week if its [start_week, end_week] range
+  // overlaps [lo, hi] at all, not just an exact match -- a multi-week unit
+  // spanning into this week still counts as being covered this week.
+  const active = units.filter((u: any) => u.start_week <= hi && u.end_week >= lo);
+  const bySubject = new Map<string, Set<string>>();
+  for (const u of active) {
+    if (!bySubject.has(u.subject)) bySubject.set(u.subject, new Set());
+    bySubject.get(u.subject)!.add(u.unit_name);
+  }
+  return Array.from(bySubject.entries()).map(([subject, topics]) => ({ subject, topics: Array.from(topics) }));
+}
+
 async function fetchWeeklyDigest(lessonPlannerUserId: string, weekStart: string, weekEnd: string) {
   const { data: plans, error: plansErr } = await admin
     .from('daily_plans')
@@ -52,7 +103,20 @@ async function fetchWeeklyDigest(lessonPlannerUserId: string, weekStart: string,
       bySubject.get(block.subject)!.add(block.content);
     }
   }
-  const subjectContent = Array.from(bySubject.entries()).map(([subject, topics]) => ({ subject, topics: Array.from(topics) }));
+  let subjectContent = Array.from(bySubject.entries()).map(([subject, topics]) => ({ subject, topics: Array.from(topics) }));
+  let subjectSource: 'daily_plans' | 'timeline_units_fallback' | 'none' = subjectContent.length ? 'daily_plans' : 'none';
+
+  // Nothing seeded in Daily Planner for this range yet -- fall back to
+  // what the Year Timeline says is scheduled, so weekly mode still has
+  // real content the FIRST time it's ever run for a given week, not just
+  // after the teacher has clicked into every individual day.
+  if (subjectContent.length === 0) {
+    const fallback = await fetchTimelineFallback(lessonPlannerUserId, weekStart, weekEnd);
+    if (fallback.length) {
+      subjectContent = fallback;
+      subjectSource = 'timeline_units_fallback';
+    }
+  }
 
   const { data: events, error: eventsErr } = await admin
     .from('calendar_events')
@@ -63,10 +127,10 @@ async function fetchWeeklyDigest(lessonPlannerUserId: string, weekStart: string,
     .order('event_date', { ascending: true });
   if (eventsErr) throw new Error(`calendar_events query failed: ${eventsErr.message}`);
 
-  return { subjectContent, events: events || [] };
+  return { subjectContent, subjectSource, events: events || [] };
 }
 
-function formatWeeklyContext(digest: { subjectContent: { subject: string; topics: string[] }[]; events: { event_date: string; title: string }[] }): string {
+function formatWeeklyContext(digest: { subjectContent: { subject: string; topics: string[] }[]; subjectSource?: string; events: { event_date: string; title: string }[] }): string {
   const subjLines = digest.subjectContent.length
     ? digest.subjectContent.map((s) => `- ${s.subject}: ${s.topics.join('; ')}`).join('\n')
     : '(no subject content found in the Daily Planner for this date range yet)';
