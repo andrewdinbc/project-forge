@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import SaveAsProductBar from '@/components/SaveAsProductBar';
 
 // Asset Modifier (Aj, 2026-07-19): "This is where I want to be able to take
 // literal assets and modify them to make them my own." Replaces the old
@@ -93,6 +94,28 @@ function AssetModifierInner() {
   const [applyingAI, setApplyingAI] = useState(false);
   const [aiMsg, setAiMsg] = useState(null);
   const [cropping, setCropping] = useState(false);
+
+  // Reading Passage Generator handoff (Aj, 2026-07-20): "loaded into asset
+  // modifier so I can adjust and modify as I would like... AI writing box
+  // to upload into that spot... a drag tool so I can move things with it."
+  // A generated passage arrives via sessionStorage (same handoff pattern
+  // used elsewhere in this app, e.g. Schema Lab -> Foldable Shapes) as a
+  // set of separate editable Textbox objects (title/passage/questions/
+  // answers), each tagged with a plain `fieldKey` property so edits can be
+  // read back and re-composed into a real PDF through the SAME theming/
+  // border pipeline the generator itself uses -- drag/resize is native to
+  // every Fabric object already, so no new drag tool was needed, just a
+  // multi-object load instead of the single flat image this editor
+  // previously only accepted.
+  const isReadingPassageMode = searchParams.get('readingPassage') === '1';
+  const [rpMeta, setRpMeta] = useState(null);
+  const [selectedFieldKey, setSelectedFieldKey] = useState(null);
+  const [rpRewriteInstruction, setRpRewriteInstruction] = useState('');
+  const [rpRewriting, setRpRewriting] = useState(false);
+  const [rpRewriteMsg, setRpRewriteMsg] = useState(null);
+  const [rpRegenerating, setRpRegenerating] = useState(false);
+  const [rpMsg, setRpMsg] = useState(null);
+  const [rpFileUrl, setRpFileUrl] = useState(null);
 
   // Font Studio (Aj, 2026-07-19): "make something similar for font... Push
   // to Font Modifier." Rather than a separate app, this is the SAME editor
@@ -199,7 +222,42 @@ function AssetModifierInner() {
       canvas.freeDrawingBrush.width = 4;
       canvas.freeDrawingBrush.color = '#000000';
 
-      if (initialAssetUrl) {
+      if (isReadingPassageMode) {
+        // Load a generated reading passage as separate, draggable, directly
+        // editable Textbox objects instead of one flat image -- each tagged
+        // with a plain `fieldKey` so regeneratePassagePdf() can read the
+        // (possibly edited) text back out in the right place.
+        try {
+          const raw = sessionStorage.getItem('assetModifier_readingPassage');
+          if (!raw) throw new Error('No passage data found -- go back and generate one first, then use "Edit in Asset Modifier".');
+          const spec = JSON.parse(raw);
+          setRpMeta(spec.meta);
+          const { Textbox } = fabricRef.current;
+          const contentWidth = Math.min(wrap.clientWidth - 80, 620);
+          let y = 30;
+          const addField = (fieldKey, text, opts = {}) => {
+            const tb = new Textbox(text, {
+              left: 30, top: y, width: opts.width || contentWidth,
+              fontSize: opts.fontSize || 13, fontWeight: opts.fontWeight || 'normal',
+              fill: opts.fill || '#1c1c1c', lineHeight: 1.25,
+            });
+            tb.fieldKey = fieldKey;
+            canvas.add(tb);
+            y += tb.height + (opts.gap ?? 14);
+            return tb;
+          };
+          addField('title', spec.level.title || spec.meta.docTitle, { fontSize: 20, fontWeight: 700, fill: '#1c3557', gap: 18 });
+          addField('passage', spec.level.passage, { fontSize: 13, gap: 22 });
+          (spec.level.questions || []).forEach((q, i) => {
+            addField(`q${i}_prompt`, `${i + 1}. ${q.prompt}`, { fontSize: 12.5, fontWeight: 600, gap: 4 });
+            addField(`q${i}_answer`, `Answer: ${q.answer}`, { fontSize: 11.5, fill: '#2f6b41', gap: 16 });
+          });
+          canvas.setDimensions({ width: wrap.clientWidth, height: Math.max(640, y + 30) });
+          canvas.requestRenderAll();
+        } catch (e) {
+          setAiMsg(e.message || 'Could not load the passage data -- starting blank instead.');
+        }
+      } else if (initialAssetUrl) {
         try {
           const img = await FabricImage.fromURL(initialAssetUrl, { crossOrigin: 'anonymous' });
           const scale = Math.min((wrap.clientWidth - 40) / img.width, 560 / img.height, 1);
@@ -221,10 +279,12 @@ function AssetModifierInner() {
         setOpacity(obj.opacity == null ? 1 : obj.opacity);
         setShadow(!!obj.shadow);
         if (obj.type === 'textbox' && obj.fontFamily) setFontFamily(obj.fontFamily);
+        setSelectedFieldKey(obj.fieldKey || null);
+        if (obj.fieldKey) setRpRewriteMsg(null);
       };
       canvas.on('selection:created', updateSelectionState);
       canvas.on('selection:updated', updateSelectionState);
-      canvas.on('selection:cleared', () => setSelected(null));
+      canvas.on('selection:cleared', () => { setSelected(null); setSelectedFieldKey(null); });
       canvas.on('object:modified', pushHistory);
       canvas.on('path:created', pushHistory);
 
@@ -458,6 +518,81 @@ function AssetModifierInner() {
     }
   }
 
+  // ---------- Reading Passage: per-field AI rewrite ----------
+  async function rewriteSelectedText() {
+    const canvas = fCanvasRef.current;
+    const obj = canvas?.getActiveObject();
+    if (!obj || !obj.fieldKey || !rpRewriteInstruction.trim() || !userId) return;
+    setRpRewriting(true); setRpRewriteMsg(null);
+    try {
+      const res = await fetch('/api/asset-modifier/ai-rewrite-text', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId, currentText: obj.text, instruction: rpRewriteInstruction.trim(),
+          context: rpMeta ? `This is part of a grade ${rpMeta.gradeLevel} reading comprehension worksheet about "${rpMeta.topic}". The field being edited is: ${obj.fieldKey}.` : undefined,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Rewrite failed');
+      obj.set({ text: d.text });
+      canvas.requestRenderAll();
+      pushHistory();
+      setRpRewriteMsg('Applied \u2713 (use Undo if it\'s not what you wanted)');
+    } catch (e) {
+      setRpRewriteMsg(e.message);
+    } finally {
+      setRpRewriting(false);
+    }
+  }
+
+  // ---------- Reading Passage: regenerate the polished PDF from edits ----------
+  // Reads the (possibly hand-edited, possibly dragged-around) fieldKey
+  // textboxes back off the canvas and sends them through the SAME
+  // generate route the original passage came from, in "precomposed" mode
+  // (skip the AI writing step, use this exact text) -- so the final PDF
+  // still gets the real border/theme/answer-key pipeline, not a rasterized
+  // screenshot of the canvas.
+  async function regeneratePassagePdf() {
+    const canvas = fCanvasRef.current;
+    if (!canvas || !rpMeta || !userId || rpRegenerating) return;
+    setRpRegenerating(true); setRpMsg(null); setRpFileUrl(null);
+    try {
+      const byKey = {};
+      canvas.getObjects().forEach((o) => { if (o.fieldKey) byKey[o.fieldKey] = o.text; });
+      const questionCount = Object.keys(byKey).filter((k) => /^q\d+_prompt$/.test(k)).length;
+      const questions = Array.from({ length: questionCount }, (_, i) => ({
+        type: rpMeta.questionTypes?.[i] || 'short_answer',
+        prompt: (byKey[`q${i}_prompt`] || '').replace(/^\d+\.\s*/, ''),
+        answer: (byKey[`q${i}_answer`] || '').replace(/^Answer:\s*/, ''),
+      }));
+      const res = await fetch('/api/worksheet-generators/reading-passage/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId, topic: rpMeta.topic, mode: 'single', gradeLevel: rpMeta.gradeLevel,
+          title: rpMeta.docTitle, borderPartId: rpMeta.borderPartId, headerPartId: rpMeta.headerPartId,
+          illustrationUrl: rpMeta.illustrationUrl,
+          precomposedLevels: [{
+            levelLabel: null, targetGrade: Number(rpMeta.gradeLevel),
+            title: byKey.title || rpMeta.docTitle, passage: byKey.passage || '',
+            annotationGuide: rpMeta.annotationGuide || [], questions,
+          }],
+        }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Regeneration failed'); }
+      const fileUrlHeader = res.headers.get('X-File-Url');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'reading-passage.pdf'; a.click();
+      window.URL.revokeObjectURL(url);
+      if (fileUrlHeader) setRpFileUrl(decodeURIComponent(fileUrlHeader));
+      setRpMsg('\u2713 Regenerated and downloaded');
+    } catch (e) {
+      setRpMsg(e.message);
+    } finally {
+      setRpRegenerating(false);
+    }
+  }
+
   // ---------- Save ----------
   async function saveAsset() {
     if (!userId) return;
@@ -654,6 +789,42 @@ function AssetModifierInner() {
             </div>
             {aiMsg && <p style={{ fontSize: 11, color: aiMsg.startsWith('Applied') ? '#2f6b41' : '#a33', marginTop: 6 }}>{aiMsg}</p>}
           </div>
+
+          {isReadingPassageMode && (
+            <div style={{ marginTop: 10, padding: 10, background: '#eef6f0', border: '1px solid #b8dcc2', borderRadius: 8 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#2f6b41', margin: '0 0 6px' }}>
+                📖 Reading Passage Editing{rpMeta ? ` -- ${rpMeta.topic}` : ''}
+              </p>
+              <p style={{ fontSize: 11, color: '#4a7a58', margin: '0 0 8px' }}>
+                Drag any text box to reposition it (native to every object here). Click one, then use
+                the box below to have AI rewrite just that piece -- or type directly into it like any
+                text box.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text" value={rpRewriteInstruction} onChange={(e) => setRpRewriteInstruction(e.target.value)}
+                  placeholder={selectedFieldKey ? `Rewrite the "${selectedFieldKey}" box -- e.g. "make it more exciting"` : 'Click a text box first'}
+                  disabled={rpRewriting || !selectedFieldKey}
+                  onKeyDown={(e) => { if (e.key === 'Enter') rewriteSelectedText(); }}
+                  style={{ flex: 1, fontSize: 12, padding: '6px 8px', border: '1px solid #b8dcc2', borderRadius: 4 }}
+                />
+                <button onClick={rewriteSelectedText} disabled={rpRewriting || !selectedFieldKey || !rpRewriteInstruction.trim()}
+                  style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#2f6b41', border: 'none', borderRadius: 5, padding: '6px 14px', cursor: rpRewriting ? 'default' : 'pointer', opacity: rpRewriting || !selectedFieldKey || !rpRewriteInstruction.trim() ? 0.6 : 1 }}>
+                  {rpRewriting ? 'Rewriting…' : 'AI Rewrite'}
+                </button>
+              </div>
+              {rpRewriteMsg && <p style={{ fontSize: 11, color: rpRewriteMsg.startsWith('Applied') ? '#2f6b41' : '#a33', marginTop: 6 }}>{rpRewriteMsg}</p>}
+
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #b8dcc2' }}>
+                <button onClick={regeneratePassagePdf} disabled={rpRegenerating}
+                  style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#1c3557', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: rpRegenerating ? 'default' : 'pointer', opacity: rpRegenerating ? 0.6 : 1 }}>
+                  {rpRegenerating ? 'Regenerating…' : '🔄 Regenerate Polished PDF'}
+                </button>
+                {rpMsg && <span style={{ fontSize: 12, color: rpMsg.startsWith('\u2713') ? '#2f6b41' : '#a33', marginLeft: 10 }}>{rpMsg}</span>}
+                {rpFileUrl && <SaveAsProductBar userId={userId} fileUrl={rpFileUrl} defaultTitle={rpMeta?.docTitle} />}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: properties */}
