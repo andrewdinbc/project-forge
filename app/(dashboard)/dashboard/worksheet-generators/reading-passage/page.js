@@ -1,11 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { COLORS as C, FONT_BODY } from '@/lib/theme'
 import { getCurrentUser } from '@/lib/auth'
 import SaveAsProductBar from '@/components/SaveAsProductBar'
 
 export default function ReadingPassageGeneratorPage() {
+  const router = useRouter()
   const [userId, setUserId] = useState(null)
+  const [sendingToEditor, setSendingToEditor] = useState(false)
   const [topic, setTopic] = useState('')
   const [mode, setMode] = useState('single') // 'single' | 'differentiated'
   const [gradeLevel, setGradeLevel] = useState(3)
@@ -83,6 +86,47 @@ export default function ReadingPassageGeneratorPage() {
       setMsg(e.message)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  // "Loaded into asset modifier so I can adjust and modify... AI writing
+  // box... a drag tool" (Aj, 2026-07-20). Fetches the structured passage
+  // (no PDF built yet) and hands it to Asset Modifier as separate,
+  // draggable, per-field-editable text boxes via the same sessionStorage
+  // handoff pattern used elsewhere in this app. Single-grade mode only for
+  // now -- differentiated (3-tier) editing would need a page switcher in
+  // the editor, not yet built.
+  async function sendToAssetModifier() {
+    if (!userId || !topic.trim() || mode !== 'single') return
+    setSendingToEditor(true); setMsg(null)
+    try {
+      const res = await fetch('/api/worksheet-generators/reading-passage/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId, topic: topic.trim(), mode, gradeLevel: Number(gradeLevel),
+          borderPartId: borderPartId || undefined, headerPartId: headerPartId || undefined,
+          illustrationUrl: illustrationMode !== 'none' ? illustrationUrl || undefined : undefined,
+          title: title || undefined, returnJson: true,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || 'Could not generate the passage')
+      const level = d.levels[0]
+      const spec = {
+        meta: {
+          topic: topic.trim(), gradeLevel: Number(gradeLevel), docTitle: d.docTitle,
+          borderPartId: borderPartId || undefined, headerPartId: headerPartId || undefined,
+          illustrationUrl: illustrationMode !== 'none' ? illustrationUrl || undefined : undefined,
+          annotationGuide: level.annotationGuide, questionTypes: (level.questions || []).map((q) => q.type),
+        },
+        level,
+      }
+      sessionStorage.setItem('assetModifier_readingPassage', JSON.stringify(spec))
+      router.push('/dashboard/asset-modifier?readingPassage=1')
+    } catch (e) {
+      setMsg(e.message)
+    } finally {
+      setSendingToEditor(false)
     }
   }
 
@@ -182,6 +226,15 @@ export default function ReadingPassageGeneratorPage() {
           >
             {generating ? 'Generating…' : '📄 Generate Reading Passage'}
           </button>
+          {mode === 'single' && (
+            <button
+              onClick={sendToAssetModifier} disabled={sendingToEditor || !userId || !topic.trim()}
+              title="Load this passage as separate, draggable text boxes -- edit, drag, or AI-rewrite any piece, then regenerate the polished PDF"
+              style={{ padding: '9px 18px', background: '#fff', color: '#2f6b41', border: '1px solid #2f6b41', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: sendingToEditor ? 0.6 : 1 }}
+            >
+              {sendingToEditor ? 'Loading…' : '✏️ Edit in Asset Modifier'}
+            </button>
+          )}
         </div>
         {msg && <p style={{ fontSize: 12, color: msg.startsWith('✓') ? '#2f6b41' : '#a33', marginTop: 8 }}>{msg}</p>}
 
