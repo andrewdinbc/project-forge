@@ -53,9 +53,13 @@ Keep it to real, common, classroom-appropriate English words only -- no proper n
 
     const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 500, messages: [{ role: 'user', content: prompt }] });
     const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '[]';
+    // 2026-07-21: extract the [...] array rather than assuming the whole
+    // response is JSON (see word-ladders fix, same root cause).
+    const arrMatch = raw.match(/\[[\s\S]*\]/);
+    const jsonText = arrMatch ? arrMatch[0] : raw.replace(/```json|```/g, '').trim();
     let words: string[] = [];
     try {
-      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      const parsed = JSON.parse(jsonText);
       if (Array.isArray(parsed)) words = parsed.map((w: any) => String(w).toLowerCase().trim()).filter(Boolean);
     } catch { words = []; }
     if (!words.length) return NextResponse.json({ error: 'Could not generate a word list -- try again' }, { status: 500 });
