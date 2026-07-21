@@ -38,6 +38,9 @@ export async function POST(request: NextRequest) {
 
     const plan = planYearResources(units);
     if (!plan.length) {
+      // Roll back -- otherwise every failed planning attempt leaves an
+      // empty, orphaned draft bundle behind with nothing pointing at it.
+      await admin.from('bundles').delete().eq('id', bundle.id);
       return NextResponse.json(
         { error: 'No live generators matched these units -- nothing to plan. Check subject names match curriculum subject names.' },
         { status: 422 }
