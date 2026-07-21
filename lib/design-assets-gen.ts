@@ -19,9 +19,26 @@ export const LINE_ART_STYLE_SUFFIX =
 export const FLAT_COLOR_ICON_SUFFIX =
   ', flat vector clip art style, bold black outlines, bright cheerful saturated colors, simple friendly cartoon illustration, plain white background, no gradients, no shading, designed for children\'s educational materials';
 
+// Added 2026-07-21 per Aj: character library images were stripping out
+// background scenery entirely (explicit "plain white background" in the
+// two suffixes above), which is why the comic-character library reads as
+// flat clip-art cutouts rather than a professional illustrated cast. These
+// two new styles keep a real background scene in the image -- a simple
+// complementary setting for the character, not left blank -- one full
+// color, one black & white (for the print comic pipeline specifically),
+// while keeping the same "single character as clear focal point" framing
+// so it still works as a reusable library asset, not a busy panel scene.
+export const SCENE_COLOR_STYLE_SUFFIX =
+  ', professional character illustration in a rich, detailed comic-book art style, full color with confident ink linework and painterly shading, includes a simple complementary background scene appropriate to the character -- do not leave the background blank or plain white -- consistent polished illustration quality, single character as the clear focal point, background supports but does not overwhelm the character';
+
+export const SCENE_BW_STYLE_SUFFIX =
+  ', professional character illustration in a rich, detailed comic-book art style, black and white ink line art with light hatching or screentone for shading (no flat color fill), includes a simple background scene appropriate to the character rendered in the same black-and-white linework -- do not leave the background blank or plain white -- designed to print clearly on a black and white printer while still reading as a full illustration, not a clip-art cutout, single character as the clear focal point, background linework stays light enough not to waste toner';
+
 export const STYLE_SUFFIXES: Record<string, string> = {
   line_art: LINE_ART_STYLE_SUFFIX,
   flat_color_icon: FLAT_COLOR_ICON_SUFFIX,
+  scene_color: SCENE_COLOR_STYLE_SUFFIX,
+  scene_bw: SCENE_BW_STYLE_SUFFIX,
 };
 
 export async function generateWithGemini(prompt: string, referenceImageBase64?: string): Promise<Buffer> {
