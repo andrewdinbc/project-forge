@@ -71,12 +71,15 @@ export async function POST(request: NextRequest) {
     const n = Math.max(4, Math.min(8, parseInt(rungs, 10) || 5));
 
     let chain: string[] | null = null;
+    const attemptLog: any[] = [];
     const MAX_ATTEMPTS = 8;  // raised 2026-07-20 from 4 -- spot-check testing hit a real 'could not generate' failure at 4 attempts on default params (4-letter, 5 rungs); this is a genuinely hard task for a model without a real dictionary+BFS search (see comment above), so more attempts is the honest cheap mitigation until a real word-list-backed solver replaces this, matching the Sudoku/KenKen pattern
     for (let attempt = 0; attempt < MAX_ATTEMPTS && !chain; attempt++) {
       const candidate = await generateChain(len, n, topic?.trim());
-      if (candidate && verifyChain(candidate, len)) chain = candidate;
+      const ok = candidate ? verifyChain(candidate, len) : false;
+      attemptLog.push({ attempt, candidate, ok });
+      if (candidate && ok) chain = candidate;
     }
-    if (!chain) return NextResponse.json({ error: `Could not generate a valid ${len}-letter word ladder after ${MAX_ATTEMPTS} attempts -- try a different word length or fewer rungs.` }, { status: 500 });
+    if (!chain) return NextResponse.json({ error: `Could not generate a valid ${len}-letter word ladder after ${MAX_ATTEMPTS} attempts -- try a different word length or fewer rungs.`, _debug_attemptLog: attemptLog }, { status: 500 });
 
     const theme = await loadBundleTheme(admin, userId, bundleId);
     const { doc, helv, helvBold } = await newWorksheetDoc();
