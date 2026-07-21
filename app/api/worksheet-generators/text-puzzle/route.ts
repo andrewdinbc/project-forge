@@ -23,8 +23,12 @@ export async function POST(request: NextRequest) {
     const prompt = TYPE_PROMPTS[type](n, topic?.trim(), grade?.trim());
     const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
     const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '[]';
+    // 2026-07-21: extract the [...] array rather than assuming the whole
+    // response is JSON (see word-ladders fix, same root cause).
+    const arrMatch = raw.match(/\[[\s\S]*\]/);
+    const jsonText = arrMatch ? arrMatch[0] : raw.replace(/```json|```/g, '').trim();
     let items: any[] = [];
-    try { items = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { items = []; }
+    try { items = JSON.parse(jsonText); } catch { items = []; }
     if (!items.length) return NextResponse.json({ error: 'Could not generate puzzles -- try again' }, { status: 500 });
 
     const { doc, helv, helvBold } = await newWorksheetDoc();
