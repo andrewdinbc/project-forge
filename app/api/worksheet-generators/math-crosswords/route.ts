@@ -20,7 +20,7 @@ export const maxDuration = 30;
 const admin: any = supabaseAdmin;
 
 type Op = '+' | '-' | 'x';
-const OP_LABEL: Record<Op, string> = { '+': '+', '-': '\u2212', 'x': '\u00d7' };
+const OP_LABEL: Record<Op, string> = { '+': '+', '-': '-', 'x': '\u00d7' };  // fixed 2026-07-20: same WinAnsi-encoding bug as kenken.ts's OP_SYMBOL -- U+2212 isn't in range, plain hyphen is
 
 // Generates one problem with a 2-4 digit answer (no leading zero) using
 // the given operation.
@@ -174,3 +174,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
 }
+
