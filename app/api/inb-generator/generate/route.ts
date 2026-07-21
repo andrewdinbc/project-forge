@@ -9,6 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 import { classifyComponents, drawCoverPage, drawTOCPage, drawDirectionsPage, drawTextPage } from '@/lib/inb-generator';
 import { FOLDABLE_SHAPES, drawFlapBook, drawLayeredBook, drawRadialFoldable, drawTwoPanelComparison, drawPuzzlePiece, drawSilhouetteCard, drawStoragePocket, drawAccordionBooklet, drawTaskCardGrid, drawRecordingSheet, drawGameBoardTrack, drawSpinner } from '@/lib/foldable-shapes';
+import { sanitizeAiJsonText } from '@/lib/worksheet-pdf';
 
 const admin: any = supabaseAdmin;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -110,7 +111,7 @@ Respond with ONLY valid JSON, no prose, no markdown:
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     });
     const raw = response.content.find((b: any) => (b as any).type === 'text') as any;
@@ -119,9 +120,24 @@ Respond with ONLY valid JSON, no prose, no markdown:
     try {
       generated = JSON.parse(text);
     } catch {
+      // 2026-07-21: this fallback used to re-throw JSON.parse's own error
+      // uncaught if the regex-matched substring was ALSO malformed --
+      // found via Reading Comprehension Packet hitting exactly this on a
+      // real run. Now falls all the way back to an empty component list
+      // rather than crashing the whole generation over one bad AI response.
       const match = text.match(/\{[\s\S]*\}/);
-      generated = match ? JSON.parse(match[0]) : { title: `${schema.name} \u2014 ${subject}`, components: [] };
+      try {
+        generated = match ? JSON.parse(match[0]) : null;
+      } catch {
+        generated = null;
+      }
+      if (!generated) generated = { title: `${schema.name} \u2014 ${subject}`, components: [] };
     }
+    // Sanitize every string in the AI response once, here, so every
+    // downstream drawText call (cover, TOC, each component) automatically
+    // gets WinAnsi-safe text -- found via this same schema crashing on an
+    // AI-written arrow character pdf-lib can't encode.
+    generated = sanitizeAiJsonText(generated);
     const genByName: Record<string, any> = {};
     for (const c of generated.components || []) genByName[c.name] = c;
 
