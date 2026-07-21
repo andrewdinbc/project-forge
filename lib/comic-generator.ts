@@ -57,7 +57,7 @@ export interface ComicScript {
 // facing description of what's available, the DB rows are the real asset
 // lookup, fetched live in the API route so new poses/characters can be
 // added later without a code change on the lookup side.
-export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student' | 'brand_mascot' | 'adult'; description: string; poses: string[] }[] = [
+export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student' | 'brand_mascot' | 'adult' | 'pet'; description: string; poses: string[] }[] = [
   { id: 'fox-fable', name: 'Fox Fable', type: 'mascot', description: 'a clever, encouraging fox mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'owl-professor', name: 'Owl Professor', type: 'mascot', description: 'a wise, bespectacled owl mascot who explains things (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'robot-scout', name: 'Robot Scout', type: 'mascot', description: 'a helpful, curious robot mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
@@ -70,6 +70,13 @@ export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 's
   { id: 'maya', name: 'Maya', type: 'student', description: 'an original student character -- shoulder-length brown hair, gray zip-up hoodie', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'andre', name: 'Andre', type: 'student', description: 'an original student character -- glasses, dark hair, gray zip-up hoodie', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'mei', name: 'Mei', type: 'student', description: 'an original student character -- shoulder-length dark hair, patterned top', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'byte', name: 'Byte', type: 'mascot', description: 'a warm, caring robot mascot with a heart symbol on its chest -- distinct personality from Robot Scout, good for encouraging/emotional-support moments', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'biscuit', name: 'Biscuit', type: 'pet', description: 'a cheerful, loyal West Highland Terrier dog', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'rusty', name: 'Rusty', type: 'pet', description: 'a scrappy, adventurous Cairn Terrier dog', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'snowball', name: 'Snowball', type: 'pet', description: 'a calm, dignified Persian cat', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'mochi', name: 'Mochi', type: 'pet', description: 'a clever, curious Siamese cat', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'bramble', name: 'Bramble', type: 'pet', description: 'a gentle, hardworking everyday horse', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'duchess', name: 'Duchess', type: 'pet', description: 'a proud, elegant show horse dressed for competition with ribbons', poses: ['base', 'happy', 'thinking', 'pointing'] },
 ];
 
 export interface CastPanelScript {
@@ -104,7 +111,7 @@ export function buildCastComicScriptPrompt(opts: {
 IMPORTANT: this comic uses a FIXED, PRE-DRAWN cast -- you cannot invent new characters or scenes. Every panel must use ONLY the characters below, and for each character used in a panel you must pick one of their available poses:
 ${castDescriptions}
 
-Guidance: There are now six student characters available (Kai, Zoe, Leo, Maya, Andre, Mei) -- pick 2-3 of them as this issue's recurring protagonists rather than always defaulting to the same two, so different comics naturally feature different students over time. The mascots (Fox Fable, Owl Professor, Robot Scout, Remy Rabbit) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical, Remy Rabbit for a fast-paced or energetic beat. Ms. Diaz (the teacher) fits naturally in classroom or assembly scenes, or any moment that calls for adult guidance. Chip (the Chalk & Circuit brand mascot) is a nice choice for a "welcome" or "wrap-up" panel since it's not tied to any one subject. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
+Guidance: There are now six student characters available (Kai, Zoe, Leo, Maya, Andre, Mei) -- pick 2-3 of them as this issue's recurring protagonists rather than always defaulting to the same two, so different comics naturally feature different students over time. The mascots (Fox Fable, Owl Professor, Robot Scout, Remy Rabbit, Byte) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical, Remy Rabbit for a fast-paced or energetic beat, Byte for an encouraging/emotional-support moment. Ms. Diaz (the teacher) fits naturally in classroom or assembly scenes, or any moment that calls for adult guidance. Chip (the Chalk & Circuit brand mascot) is a nice choice for a "welcome" or "wrap-up" panel since it's not tied to any one subject. The pet characters (Biscuit and Rusty the dogs, Snowball and Mochi the cats, Bramble the horse, Duchess the show horse) are great for a class-pet, animal-themed, or "bring your pet to show and tell" story beat, or any topic that's naturally about animals. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
 
 Write exactly ${panelCount} panels telling one coherent short story start-to-finish (a setup, a small complication or question, a resolution that lands on the real content). Each panel needs:
 - "characters": array of 1-2 {"characterId": one of the ids above, "pose": one of that character's available poses}. Pick the pose that matches the emotional beat (e.g. "thinking" when puzzling something out, "happy" for a resolution, "pointing" when explaining/teaching).
