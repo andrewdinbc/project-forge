@@ -46,8 +46,13 @@ Return ONLY JSON, no markdown fences, with exactly these keys: {${slots.map((s) 
       messages: [{ role: 'user', content: prompt }],
     });
     const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '{}';
+    // 2026-07-21: extract the {...} object rather than assuming the whole
+    // response is JSON -- the model can show reasoning before the object
+    // despite being told not to (see word-ladders fix, same root cause).
+    const objMatch = raw.match(/\{[\s\S]*\}/);
+    const jsonText = objMatch ? objMatch[0] : raw.replace(/```json|```/g, '').trim();
     let content: any = {};
-    try { content = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { content = {}; }
+    try { content = JSON.parse(jsonText); } catch { content = {}; }
 
     return NextResponse.json({ ok: true, content });
   } catch (e) {
