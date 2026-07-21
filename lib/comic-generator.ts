@@ -57,7 +57,7 @@ export interface ComicScript {
 // facing description of what's available, the DB rows are the real asset
 // lookup, fetched live in the API route so new poses/characters can be
 // added later without a code change on the lookup side.
-export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student' | 'brand_mascot' | 'adult' | 'pet'; description: string; poses: string[] }[] = [
+export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 'student' | 'brand_mascot' | 'adult' | 'pet' | 'teen'; description: string; poses: string[] }[] = [
   { id: 'fox-fable', name: 'Fox Fable', type: 'mascot', description: 'a clever, encouraging fox mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'owl-professor', name: 'Owl Professor', type: 'mascot', description: 'a wise, bespectacled owl mascot who explains things (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'robot-scout', name: 'Robot Scout', type: 'mascot', description: 'a helpful, curious robot mascot (reused from Math Mastery)', poses: ['base', 'happy', 'thinking', 'pointing'] },
@@ -77,6 +77,10 @@ export const COMIC_CAST_CATALOG: { id: string; name: string; type: 'mascot' | 's
   { id: 'mochi', name: 'Mochi', type: 'pet', description: 'a clever, curious Siamese cat', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'bramble', name: 'Bramble', type: 'pet', description: 'a gentle, hardworking everyday horse', poses: ['base', 'happy', 'thinking', 'pointing'] },
   { id: 'duchess', name: 'Duchess', type: 'pet', description: 'a proud, elegant show horse dressed for competition with ribbons', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'daniel', name: 'Daniel', type: 'adult', description: 'an original adult character -- casual denim jacket, warm approachable demeanor, good for a parent/community-member role', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'sarah', name: 'Sarah', type: 'adult', description: 'an original adult character -- casual denim jacket, warm approachable demeanor, good for a parent/community-member role', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'tyler', name: 'Tyler', type: 'teen', description: 'an original teenage character -- hoodie, cargo pants, good for older-grade content or an "older sibling/mentor" role', poses: ['base', 'happy', 'thinking', 'pointing'] },
+  { id: 'nadia', name: 'Nadia', type: 'teen', description: 'an original teenage character -- hoodie, dark jeans, good for older-grade content or an "older sibling/mentor" role', poses: ['base', 'happy', 'thinking', 'pointing'] },
 ];
 
 export interface CastPanelScript {
@@ -98,20 +102,27 @@ export function buildCastComicScriptPrompt(opts: {
   gradeLevel: string;
   panelCount: number;
   weeklyContext?: string;
+  curriculumBlock?: string;
+  steeringContext?: string;
 }): string {
-  const { mode, subject, topic, gradeLevel, panelCount, weeklyContext } = opts;
+  const { mode, subject, topic, gradeLevel, panelCount, weeklyContext, curriculumBlock, steeringContext } = opts;
   const castDescriptions = COMIC_CAST_CATALOG.map((c) => `- "${c.id}" (${c.name}): ${c.description}. Available poses: ${c.poses.join(', ')}.`).join('\n');
 
   const base = mode === 'weekly'
     ? `You are writing a SHORT COMIC-BOOK-STYLE SCRIPT for a Grade ${gradeLevel} classroom "weekly reader" comic. Weave together, as ONE light narrative, everything really happening this week per the digest below -- each subject's topic and each special event should show up as a real story beat.\n\nThis week's digest:\n${weeklyContext}`
     : `You are writing a SHORT COMIC-BOOK-STYLE SCRIPT that teaches Grade ${gradeLevel} students about a real subject topic through a narrative story with characters, not a dry list of facts.\n\nSubject: ${subject}\nTopic: ${topic}`;
 
-  return `${base}
+  const groundingBlock = [
+    curriculumBlock ? `${curriculumBlock}` : '',
+    steeringContext ? `Aj's steering guidance (writing style/pedagogy preferences to follow):\n${steeringContext}` : '',
+  ].filter(Boolean).join('\n\n');
 
+  return `${base}
+${groundingBlock ? `\n${groundingBlock}\n\nGround the story's factual content in the curriculum info above where relevant -- don't just use general topic knowledge if a specific Big Idea, content point, or elaboration applies.\n` : ''}
 IMPORTANT: this comic uses a FIXED, PRE-DRAWN cast -- you cannot invent new characters or scenes. Every panel must use ONLY the characters below, and for each character used in a panel you must pick one of their available poses:
 ${castDescriptions}
 
-Guidance: There are now six student characters available (Kai, Zoe, Leo, Maya, Andre, Mei) -- pick 2-3 of them as this issue's recurring protagonists rather than always defaulting to the same two, so different comics naturally feature different students over time. The mascots (Fox Fable, Owl Professor, Robot Scout, Remy Rabbit, Byte) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical, Remy Rabbit for a fast-paced or energetic beat, Byte for an encouraging/emotional-support moment. Ms. Diaz (the teacher) fits naturally in classroom or assembly scenes, or any moment that calls for adult guidance. Chip (the Chalk & Circuit brand mascot) is a nice choice for a "welcome" or "wrap-up" panel since it's not tied to any one subject. The pet characters (Biscuit and Rusty the dogs, Snowball and Mochi the cats, Bramble the horse, Duchess the show horse) are great for a class-pet, animal-themed, or "bring your pet to show and tell" story beat, or any topic that's naturally about animals. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
+Guidance: There are now six student characters available (Kai, Zoe, Leo, Maya, Andre, Mei) and two teen characters (Tyler, Nadia) -- pick 2-3 as this issue's recurring protagonists, matching age to the grade level (younger students for younger grades, Tyler/Nadia for upper-grade content) rather than always defaulting to the same characters, so different comics naturally feature different casts over time. The mascots (Fox Fable, Owl Professor, Robot Scout, Remy Rabbit, Byte) make the most sense popping in when a specific subject needs an explainer/helper moment -- e.g. Owl Professor for a tricky concept, Fox Fable for an encouraging nudge, Robot Scout for something logical/methodical, Remy Rabbit for a fast-paced or energetic beat, Byte for an encouraging/emotional-support moment. The adult characters (Ms. Diaz the teacher, Daniel and Sarah) fit naturally in classroom, assembly, or family scenes, or any moment that calls for adult guidance. Chip (the Chalk & Circuit brand mascot) is a nice choice for a "welcome" or "wrap-up" panel since it's not tied to any one subject. The pet characters (Biscuit and Rusty the dogs, Snowball and Mochi the cats, Bramble the horse, Duchess the show horse) are great for a class-pet, animal-themed, or "bring your pet to show and tell" story beat, or any topic that's naturally about animals. You don't have to use every character. Use 1-2 characters per panel (characters interacting works well).
 
 Write exactly ${panelCount} panels telling one coherent short story start-to-finish (a setup, a small complication or question, a resolution that lands on the real content). Each panel needs:
 - "characters": array of 1-2 {"characterId": one of the ids above, "pose": one of that character's available poses}. Pick the pose that matches the emotional beat (e.g. "thinking" when puzzling something out, "happy" for a resolution, "pointing" when explaining/teaching).
@@ -145,15 +156,22 @@ export function buildComicScriptPrompt(opts: {
   gradeLevel: string;
   panelCount: number;
   weeklyContext?: string;
+  curriculumBlock?: string;
+  steeringContext?: string;
 }): string {
-  const { mode, subject, topic, gradeLevel, panelCount, weeklyContext } = opts;
+  const { mode, subject, topic, gradeLevel, panelCount, weeklyContext, curriculumBlock, steeringContext } = opts;
 
   const base = mode === 'weekly'
     ? `You are writing a SHORT COMIC-BOOK-STYLE SCRIPT for a Grade ${gradeLevel} classroom "weekly reader" comic. Weave together, as ONE light narrative (two or three recurring student characters moving through their actual school week), everything really happening this week per the digest below -- each subject's topic and each special event (assembly, guest speaker, etc.) should show up as a real story beat that actually teaches or references that content, not a random list bolted together.\n\nThis week's digest:\n${weeklyContext}`
     : `You are writing a SHORT COMIC-BOOK-STYLE SCRIPT that teaches Grade ${gradeLevel} students about a real subject topic through a narrative story with characters, not a dry list of facts.\n\nSubject: ${subject}\nTopic: ${topic}`;
 
-  return `${base}
+  const groundingBlock = [
+    curriculumBlock ? `${curriculumBlock}` : '',
+    steeringContext ? `Aj's steering guidance (writing style/pedagogy preferences to follow):\n${steeringContext}` : '',
+  ].filter(Boolean).join('\n\n');
 
+  return `${base}
+${groundingBlock ? `\n${groundingBlock}\n\nGround the story's factual content in the curriculum info above where relevant -- don't just use general topic knowledge if a specific Big Idea, content point, or elaboration applies.\n` : ''}
 Write exactly ${panelCount} panels that tell one coherent short story start-to-finish (a setup, a small complication or question, a resolution that lands on the real content). Each panel needs:
 - "sceneDescription": a vivid, concrete visual description of what's happening in THIS SINGLE panel (characters, setting, action) -- written as an image-generation prompt for a black-and-white line-art illustrator. Do not mention any real, named public figure or any existing copyrighted character. Invent simple, friendly original characters (name two or three recurring ones once and reuse them across panels) rather than existing copyrighted characters.
 - "caption": OPTIONAL short narrator caption box text (use an empty string if not needed for this panel).
