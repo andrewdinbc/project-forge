@@ -58,7 +58,9 @@ Return ONLY a JSON array of the words in order, lowercase, nothing else: ["word1
   try {
     const chain = JSON.parse(raw.replace(/```json|```/g, '').trim());
     return Array.isArray(chain) ? chain.map((w: string) => String(w).toLowerCase()) : null;
-  } catch {
+  } catch (parseErr: any) {
+    (generateChain as any)._lastRaw = raw;
+    (generateChain as any)._lastErr = parseErr?.message;
     return null;
   }
 }
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     for (let attempt = 0; attempt < MAX_ATTEMPTS && !chain; attempt++) {
       const candidate = await generateChain(len, n, topic?.trim());
       const ok = candidate ? verifyChain(candidate, len) : false;
-      attemptLog.push({ attempt, candidate, ok });
+      attemptLog.push({ attempt, candidate, ok, rawIfFailed: candidate ? undefined : (generateChain as any)._lastRaw, parseErr: (generateChain as any)._lastErr });
       if (candidate && ok) chain = candidate;
     }
     if (!chain) return NextResponse.json({ error: `Could not generate a valid ${len}-letter word ladder after ${MAX_ATTEMPTS} attempts -- try a different word length or fewer rungs.`, _debug_attemptLog: attemptLog }, { status: 500 });
