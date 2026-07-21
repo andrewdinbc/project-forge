@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { renderPageAsImage } from 'unpdf';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSchema } from '@/lib/schema-lab';
+import { getSchema, incrementGenerationCount } from '@/lib/schema-lab';
 import { createResource, buildSteeringContext } from '@/lib/style-lab';
 import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -209,6 +209,13 @@ Respond with ONLY valid JSON, no prose, no markdown:
       title, file_url: pdfUrlData.publicUrl,
       original_text: `Interactive Notebook generated from schema "${schema.name}" for ${subject} Grade ${grade} (${jur}).`,
     });
+
+    // 2026-07-21: incrementGenerationCount existed in lib/schema-lab.js
+    // this whole time but was never actually called here -- every schema
+    // showed generation_count: 0 even after real successful runs. Best-
+    // effort: a tracking-counter failure shouldn't fail the generation
+    // that already succeeded.
+    try { await incrementGenerationCount(userId, schemaId); } catch { /* non-fatal */ }
 
     return NextResponse.json({
       ok: true,
