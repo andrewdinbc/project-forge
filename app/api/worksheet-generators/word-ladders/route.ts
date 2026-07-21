@@ -49,6 +49,8 @@ async function generateChain(wordLength: number, rungs: number, topic: string): 
 
 Double check your own chain before answering: for each consecutive pair, count the letters that differ -- it must be exactly 1, and both words must be ${wordLength} letters long.
 
+Worked example of a VALID 4-letter chain (for calibration only, do not reuse it): cold -> cord -> word -> ward -> wart. Check: cold->cord differs only at position 2 (l->r). cord->word differs only at position 1 (c->w). word->ward differs only at position 2 (o->a). ward->wart differs only at position 4 (d->t). Every word is a real 4-letter word. Follow this exact standard of verification for your own chain.
+
 Return ONLY a JSON array of the words in order, lowercase, nothing else: ["word1","word2",...]`;
 
   const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 500, messages: [{ role: 'user', content: prompt }] });
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
     const n = Math.max(4, Math.min(8, parseInt(rungs, 10) || 5));
 
     let chain: string[] | null = null;
-    const MAX_ATTEMPTS = 4;
+    const MAX_ATTEMPTS = 8;  // raised 2026-07-20 from 4 -- spot-check testing hit a real 'could not generate' failure at 4 attempts on default params (4-letter, 5 rungs); this is a genuinely hard task for a model without a real dictionary+BFS search (see comment above), so more attempts is the honest cheap mitigation until a real word-list-backed solver replaces this, matching the Sudoku/KenKen pattern
     for (let attempt = 0; attempt < MAX_ATTEMPTS && !chain; attempt++) {
       const candidate = await generateChain(len, n, topic?.trim());
       if (candidate && verifyChain(candidate, len)) chain = candidate;
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     const theme = await loadBundleTheme(admin, userId, bundleId);
     const { doc, helv, helvBold } = await newWorksheetDoc();
-    const docTitle = title?.trim() || `Word Ladder: ${chain[0].toUpperCase()} \u2192 ${chain[chain.length - 1].toUpperCase()}`;
+    const docTitle = title?.trim() || `Word Ladder: ${chain[0].toUpperCase()} to ${chain[chain.length - 1].toUpperCase()}`;  // fixed 2026-07-20: was U+2192 (rightarrow), not in WinAnsi -- this docTitle gets drawn via page.drawText in addThemedWorksheetPage, so it was a latent crash waiting for a successful chain generation to trigger it
 
     const drawLadder = (page: any, showAnswers: boolean) => {
       const rowH = 46, boxSize = 30, top = PAGE_H - 170;
@@ -119,3 +121,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
 }
+
