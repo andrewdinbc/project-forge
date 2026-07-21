@@ -28,8 +28,12 @@ export async function POST(request: NextRequest) {
     const prompt = `Write one original, short, kid-friendly joke or riddle${grade ? ` for ${grade} students` : ''}${topic ? `, themed around: ${topic}` : ''}. The answer/punchline must be SHORT (2-4 words, letters only, no numbers or punctuation). Return ONLY JSON: {"question": "...", "answer": "PUNCHLINE IN CAPS"}`;
     const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 400, messages: [{ role: 'user', content: prompt }] });
     const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '{}';
+    // 2026-07-21: extract the {...} object rather than assuming the whole
+    // response is JSON (see word-ladders fix, same root cause).
+    const objMatch = raw.match(/\{[\s\S]*\}/);
+    const jsonText = objMatch ? objMatch[0] : raw.replace(/```json|```/g, '').trim();
     let joke: any = {};
-    try { joke = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { joke = {}; }
+    try { joke = JSON.parse(jsonText); } catch { joke = {}; }
     const answer = String(joke.answer || 'GOOD JOB').toUpperCase().replace(/[^A-Z ]/g, '');
     if (!answer.trim()) return NextResponse.json({ error: 'Could not generate a riddle -- try again' }, { status: 500 });
 
