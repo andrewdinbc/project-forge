@@ -6,7 +6,7 @@ import { errorMessage } from '@/lib/error-message';
 import { createResource } from '@/lib/style-lab';
 import { incrementGenerationCount } from '@/lib/schema-lab';
 import { generateImageBuffer } from '@/lib/design-assets-gen';
-import { buildComicScriptPrompt, drawComicCoverPage, drawComicPage, drawLiteracyQuestionsPage, COMIC_PANEL_STYLE_SUFFIX, PAGE_W, PAGE_H } from '@/lib/comic-generator';
+import { buildComicScriptPrompt, buildCastComicScriptPrompt, drawComicCoverPage, drawComicPage, drawLiteracyQuestionsPage, COMIC_PANEL_STYLE_SUFFIX, COMIC_CAST_CATALOG, PAGE_W, PAGE_H } from '@/lib/comic-generator';
 import { sanitizeAiJsonText } from '@/lib/worksheet-pdf';
 
 const admin: any = supabaseAdmin;
@@ -16,11 +16,10 @@ export const maxDuration = 300;
 
 // Comic Book Article / Weekly Reader Generator (Aj, 2026-07-21): the
 // comic-book-style branch of the "Classroom Current Events Periodical"
-// schema. POST { userId, mode, gradeLevel, ... } -> ONE assembled,
-// printable, black-and-white comic PDF with real vector panel borders +
-// speech bubbles (lib/comic-generator.ts), AI-generated B&W line-art
-// illustrations per panel (lib/design-assets-gen.ts), and a closing
-// literacy response questions page.
+// schema. POST { userId, mode, artMode, gradeLevel, ... } -> ONE
+// assembled, printable, black-and-white comic PDF with real vector panel
+// borders + speech bubbles (lib/comic-generator.ts) and a closing literacy
+// response questions page.
 //
 // mode 'topic': { subject, topic } -- a standalone comic-book article on
 // any subject, any grade.
@@ -35,6 +34,33 @@ export const maxDuration = 300;
 // than adding a secret-gated fetch + a new required env var. Defaults
 // lessonPlannerUserId to the Forge userId since Aj's account is the same
 // UUID across both apps.
+//
+// artMode 'full' (default): every panel gets a fresh AI-illustrated scene.
+// artMode 'cast' (2026-07-21, per Aj -- avoid AI-generating everything,
+// cost concern): panels reuse the pre-generated character library
+// (library_parts, category='comic-character') -- Fox Fable/Owl Professor/
+// Robot Scout (Math Mastery's mascots, restyled once into this B&W comic
+// look) plus new original students Kai and Zoe. The AI script step only
+// PICKS characterId+pose per panel from the fixed catalog; the route looks
+// up the matching cached image URL and embeds it directly -- ZERO image-
+// gen API calls per generation, only the one Claude call for the script.
+async function fetchCastImageMap(userId: string): Promise<Record<string, string>> {
+  const { data, error } = await admin
+    .from('library_parts')
+    .select('source_id, file_url')
+    .eq('user_id', userId)
+    .eq('kind', 'image')
+    .eq('category', 'comic-character');
+  if (error) throw new Error(`library_parts (comic-character) query failed: ${error.message}`);
+  const map: Record<string, string> = {};
+  for (const row of data || []) {
+    // source_id is "comic-cast:<characterId>:<pose>" -- key by "<characterId>:<pose>"
+    const parts = String(row.source_id || '').split(':');
+    if (parts.length === 3 && parts[0] === 'comic-cast') map[`${parts[1]}:${parts[2]}`] = row.file_url;
+  }
+  return map;
+}
+
 // daily_plans rows are seeded lazily -- only created when the teacher
 // actually opens the Daily Planner for that specific date (see
 // lesson-planner's app/api/daily-plan/route.js GET handler). That means a
@@ -147,7 +173,7 @@ export async function POST(request: NextRequest) {
       userId, mode, subject, topic, gradeLevel,
       panelCount = 6, imageProvider = 'gemini',
       weekStart, weekEnd, lessonPlannerUserId,
-      schemaId,
+      schemaId, artMode = 'full',
     } = body || {};
 
     if (!userId || !mode || !gradeLevel) {
@@ -155,6 +181,9 @@ export async function POST(request: NextRequest) {
     }
     if (mode !== 'topic' && mode !== 'weekly') {
       return NextResponse.json({ error: 'mode must be "topic" or "weekly"' }, { status: 400 });
+    }
+    if (artMode !== 'full' && artMode !== 'cast') {
+      return NextResponse.json({ error: 'artMode must be "full" or "cast"' }, { status: 400 });
     }
     if (mode === 'topic' && (!subject || !topic)) {
       return NextResponse.json({ error: 'subject and topic are required for topic mode' }, { status: 400 });
@@ -171,7 +200,9 @@ export async function POST(request: NextRequest) {
       weeklyContext = formatWeeklyContext(digestUsed);
     }
 
-    const scriptPrompt = buildComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext });
+    const scriptPrompt = artMode === 'cast'
+      ? buildCastComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext })
+      : buildComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext });
     const scriptResp = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 2200,
@@ -196,19 +227,6 @@ export async function POST(request: NextRequest) {
     // uses for AI JSON content.
     script = sanitizeAiJsonText(script);
 
-    // Generate all panel images in parallel so total wall-clock time is one
-    // image call's latency, not panelCount times that. Best-effort: a
-    // failed panel renders as a blank bordered box (see drawComicPage)
-    // rather than failing the whole comic over one bad image call.
-    const panelImageResults = await Promise.all(
-      script.panels.map((p: any) =>
-        generateImageBuffer({
-          prompt: `${p.sceneDescription}${COMIC_PANEL_STYLE_SUFFIX}`,
-          provider: imageProvider,
-        }).catch((e: any) => ({ error: errorMessage(e) }))
-      )
-    );
-
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -222,17 +240,55 @@ export async function POST(request: NextRequest) {
 
     const embeddedPanels: any[] = [];
     let failedPanels = 0;
-    for (let i = 0; i < script.panels.length; i++) {
-      const p = script.panels[i];
-      const imgResult: any = panelImageResults[i];
-      let embedded: any = null;
-      if (imgResult && !imgResult.error && imgResult.buffer) {
-        try {
-          embedded = imgResult.contentType === 'image/jpeg' ? await pdfDoc.embedJpg(imgResult.buffer) : await pdfDoc.embedPng(imgResult.buffer);
-        } catch { embedded = null; }
+
+    if (artMode === 'cast') {
+      // Zero AI image calls: look up each panel's chosen character+pose in
+      // the cached library and embed that image directly. An invalid/
+      // hallucinated characterId or pose (shouldn't happen given the fixed
+      // catalog in the prompt, but AI output is never 100% guaranteed) is
+      // best-effort skipped rather than failing the whole comic.
+      const castMap = await fetchCastImageMap(userId);
+      const validIds = new Set(COMIC_CAST_CATALOG.map((c) => c.id));
+      for (const p of script.panels) {
+        const chars = Array.isArray(p.characters) ? p.characters.filter((c: any) => validIds.has(c.characterId)) : [];
+        const images: any[] = [];
+        for (const c of chars.slice(0, 2)) {
+          const url = castMap[`${c.characterId}:${c.pose}`] || castMap[`${c.characterId}:base`];
+          if (!url) continue;
+          try {
+            const res = await fetch(url);
+            const buf = Buffer.from(await res.arrayBuffer());
+            images.push(await pdfDoc.embedPng(buf));
+          } catch { /* skip this character image, panel still renders caption/dialogue */ }
+        }
+        if (images.length === 0) failedPanels++;
+        embeddedPanels.push({ images, caption: p.caption, dialogue: p.dialogue });
       }
-      if (!embedded) failedPanels++;
-      embeddedPanels.push({ image: embedded, caption: p.caption, dialogue: p.dialogue });
+    } else {
+      // Generate all panel images in parallel so total wall-clock time is
+      // one image call's latency, not panelCount times that. Best-effort:
+      // a failed panel renders as a blank bordered box (see drawComicPage)
+      // rather than failing the whole comic over one bad image call.
+      const panelImageResults = await Promise.all(
+        script.panels.map((p: any) =>
+          generateImageBuffer({
+            prompt: `${p.sceneDescription}${COMIC_PANEL_STYLE_SUFFIX}`,
+            provider: imageProvider,
+          }).catch((e: any) => ({ error: errorMessage(e) }))
+        )
+      );
+      for (let i = 0; i < script.panels.length; i++) {
+        const p = script.panels[i];
+        const imgResult: any = panelImageResults[i];
+        let embedded: any = null;
+        if (imgResult && !imgResult.error && imgResult.buffer) {
+          try {
+            embedded = imgResult.contentType === 'image/jpeg' ? await pdfDoc.embedJpg(imgResult.buffer) : await pdfDoc.embedPng(imgResult.buffer);
+          } catch { embedded = null; }
+        }
+        if (!embedded) failedPanels++;
+        embeddedPanels.push({ images: embedded ? [embedded] : [], caption: p.caption, dialogue: p.dialogue });
+      }
     }
 
     const panelsPerPage = 6;
@@ -260,8 +316,8 @@ export async function POST(request: NextRequest) {
       title: script.title,
       file_url: pdfUrlData.publicUrl,
       original_text: mode === 'weekly'
-        ? `Comic-style weekly reader generated from the Daily Planner + Calendar for the week of ${weekStart} to ${weekEnd}.`
-        : `Comic-style article generated for ${subject}, topic "${topic}", grade ${gradeLevel}.`,
+        ? `Comic-style weekly reader generated from the Daily Planner + Calendar for the week of ${weekStart} to ${weekEnd}. (art mode: ${artMode})`
+        : `Comic-style article generated for ${subject}, topic "${topic}", grade ${gradeLevel}. (art mode: ${artMode})`,
     });
 
     if (schemaId) {
@@ -271,6 +327,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       title: script.title,
+      artMode,
       pdfUrl: pdfUrlData.publicUrl,
       savedResourceId: saved.id,
       panelCount: embeddedPanels.length,
