@@ -298,12 +298,30 @@ export async function POST(request: NextRequest) {
       // catalog in the prompt, but AI output is never 100% guaranteed) is
       // best-effort skipped rather than failing the whole comic.
       const castMap = await fetchCastImageMap(userId);
+      const catalogById = new Map(COMIC_CAST_CATALOG.map((c) => [c.id, c]));
       const validIds = new Set(COMIC_CAST_CATALOG.map((c) => c.id));
+      // Hard rule (Aj, 2026-07-21): never show the same character in the
+      // same pose twice in one comic. The prompt already asks the AI for
+      // this, but AI compliance isn't guaranteed -- this is the actual
+      // enforcement. usedPairs tracks every characterId+pose already
+      // placed in an earlier panel; a repeat gets swapped to the next
+      // available pose that character has (falling back to whatever's
+      // left, then finally allowing a repeat only if every single pose
+      // for that character has already been used this issue).
+      const usedPairs = new Set<string>();
       for (const p of script.panels) {
         const chars = Array.isArray(p.characters) ? p.characters.filter((c: any) => validIds.has(c.characterId)) : [];
         const images: any[] = [];
         for (const c of chars.slice(0, 2)) {
-          const url = castMap[`${c.characterId}:${c.pose}`] || castMap[`${c.characterId}:base`];
+          let pose = c.pose;
+          const pairKey = `${c.characterId}:${pose}`;
+          if (usedPairs.has(pairKey)) {
+            const available = catalogById.get(c.characterId)?.poses || ['base'];
+            const unused = available.find((p2: string) => !usedPairs.has(`${c.characterId}:${p2}`));
+            pose = unused || pose; // every pose already used this issue -- allow the repeat rather than drop the character
+          }
+          usedPairs.add(`${c.characterId}:${pose}`);
+          const url = castMap[`${c.characterId}:${pose}`] || castMap[`${c.characterId}:base`];
           if (!url) continue;
           try {
             const res = await fetch(url);
