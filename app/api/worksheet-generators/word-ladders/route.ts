@@ -53,14 +53,26 @@ Worked example of a VALID 4-letter chain (for calibration only, do not reuse it)
 
 Return ONLY a JSON array of the words in order, lowercase, nothing else: ["word1","word2",...]`;
 
-  const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 500, messages: [{ role: 'user', content: prompt }] });
+  const res = await anthropic.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] });
   const raw = (res.content.find((b: any) => b.type === 'text') as any)?.text || '[]';
+  // Real bug found 2026-07-21: despite "Return ONLY a JSON array, nothing
+  // else", the model reliably shows its step-by-step verification work
+  // first (the "double check your own chain" instruction essentially
+  // invites this) and puts the actual array at the end -- e.g. "I need to
+  // create a word ladder...\n\n[\"cat\",\"hat\",\"hot\",\"dot\"]". The old
+  // code did JSON.parse on the ENTIRE raw string, which fails immediately
+  // on the leading prose ("Unexpected token 'I'...") on effectively every
+  // call -- this made the feature look like a hard/unsolvable generation
+  // problem (100% failure even on trivial 3-letter chains) when the model
+  // was actually succeeding almost every time; only the extraction was
+  // broken. Pull just the JSON array out of the response instead of
+  // assuming the whole response is JSON.
+  const arrayMatch = raw.match(/\[[\s\S]*\]/);
+  const jsonText = arrayMatch ? arrayMatch[0] : raw.replace(/```json|```/g, '').trim();
   try {
-    const chain = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const chain = JSON.parse(jsonText);
     return Array.isArray(chain) ? chain.map((w: string) => String(w).toLowerCase()) : null;
-  } catch (parseErr: any) {
-    (generateChain as any)._lastRaw = raw;
-    (generateChain as any)._lastErr = parseErr?.message;
+  } catch {
     return null;
   }
 }
@@ -73,15 +85,12 @@ export async function POST(request: NextRequest) {
     const n = Math.max(4, Math.min(8, parseInt(rungs, 10) || 5));
 
     let chain: string[] | null = null;
-    const attemptLog: any[] = [];
-    const MAX_ATTEMPTS = 8;  // raised 2026-07-20 from 4 -- spot-check testing hit a real 'could not generate' failure at 4 attempts on default params (4-letter, 5 rungs); this is a genuinely hard task for a model without a real dictionary+BFS search (see comment above), so more attempts is the honest cheap mitigation until a real word-list-backed solver replaces this, matching the Sudoku/KenKen pattern
+    const MAX_ATTEMPTS = 8;  // Kept at 8 as a safety margin even after the 2026-07-21 parsing fix (see generateChain) -- the real bug was JSON extraction, not generation difficulty, but retries are cheap insurance against occasional genuine failures.
     for (let attempt = 0; attempt < MAX_ATTEMPTS && !chain; attempt++) {
       const candidate = await generateChain(len, n, topic?.trim());
-      const ok = candidate ? verifyChain(candidate, len) : false;
-      attemptLog.push({ attempt, candidate, ok, rawIfFailed: candidate ? undefined : (generateChain as any)._lastRaw, parseErr: (generateChain as any)._lastErr });
-      if (candidate && ok) chain = candidate;
+      if (candidate && verifyChain(candidate, len)) chain = candidate;
     }
-    if (!chain) return NextResponse.json({ error: `Could not generate a valid ${len}-letter word ladder after ${MAX_ATTEMPTS} attempts -- try a different word length or fewer rungs.`, _debug_attemptLog: attemptLog }, { status: 500 });
+    if (!chain) return NextResponse.json({ error: `Could not generate a valid ${len}-letter word ladder after ${MAX_ATTEMPTS} attempts -- try a different word length or fewer rungs.` }, { status: 500 });
 
     const theme = await loadBundleTheme(admin, userId, bundleId);
     const { doc, helv, helvBold } = await newWorksheetDoc();
