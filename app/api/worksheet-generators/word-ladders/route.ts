@@ -17,7 +17,7 @@ import { errorMessage } from '@/lib/error-message';
 // (backtracking solver) -- here the generation itself is AI (there's no
 // dictionary to search), but the STRUCTURE is checked in code, not
 // assumed from the model's say-so.
-export const maxDuration = 30;
+export const maxDuration = 75;  // raised 2026-07-20 alongside MAX_ATTEMPTS 4->8 -- the higher attempt count hit the old 30s ceiling and produced a raw 504 timeout instead of the honest JSON error, worse than the failure it was meant to fix. 75s comfortably covers 8 sequential Claude calls.
 
 const admin: any = supabaseAdmin;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
