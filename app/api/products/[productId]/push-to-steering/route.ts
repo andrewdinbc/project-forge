@@ -4,6 +4,16 @@ import { pushToSteering } from '@/lib/style-lab';
 import { extractPdfText } from '@/lib/pdf-extract';
 import { cleanForSteering } from '@/lib/steering-cleanup';
 import { errorMessage } from '@/lib/error-message';
+import { supabaseAdmin } from '@/lib/supabase';
+
+// 2026-07-20: this route was missed in the 2026-07-19 systemic RLS fix
+// (see app/api/products/route.ts) -- it's a server route with no browser
+// session, so calling getProduct/updateProduct without the admin client
+// meant auth.uid() was always null and RLS silently returned nothing,
+// making every push-to-steering attempt 404 with "Product not found" even
+// for the caller's own real product. Found while tracing the bundles RLS
+// report; same category of bug, same fix.
+const admin: any = supabaseAdmin;
 
 // Push to AI Steering, moved here from Style Lab (Aj, 2026-07-19): "I want
 // nothing going directly into AI steering. Instead I want my products I
@@ -23,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'userId and productId are required' }, { status: 400 });
     }
 
-    const product = await getProduct(productId, userId);
+    const product = await getProduct(productId, userId, admin);
     if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     if (!product.file_url) return NextResponse.json({ error: 'This product has no file uploaded yet' }, { status: 400 });
 
@@ -49,7 +59,7 @@ export async function POST(request: NextRequest) {
       source_type: 'upload',
       char_count: text.length,
     });
-    const updated = await updateProduct(productId, userId, { pushed_to_steering_doc_id: doc.id });
+    const updated = await updateProduct(productId, userId, { pushed_to_steering_doc_id: doc.id }, admin);
 
     return NextResponse.json({ ok: true, steering_doc_id: doc.id, product: updated });
   } catch (e) {

@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
           file_url: fileUrl,
           status: 'draft', // stays draft until reviewed -- no storefront/copyright gate wired yet, see spec doc
         }, admin);
-        await addProductToBundle(bundleId, product.id, userId);
+        await addProductToBundle(bundleId, product.id, userId, admin);
 
         const updatedParams = resultWordList ? { ...(job.params || {}), resultWordList } : job.params;
         await admin.from('bundle_generation_jobs').update({

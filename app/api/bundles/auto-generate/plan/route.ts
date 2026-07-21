@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       grade_levels: gradeLevels || Array.from(new Set(units.map((u: any) => String(u.grade)))),
       subjects: subjects || Array.from(new Set(units.map((u: any) => u.subject).filter(Boolean))),
       status: 'draft',
-    });
+    }, admin);
 
     const plan = planYearResources(units);
     if (!plan.length) {
