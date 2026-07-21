@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, GRAY } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, randInt, PAGE_W, PAGE_H, INK, NAVY, GRAY, asciiSafeFilename} from '@/lib/worksheet-pdf';
 import { generateCrossword, cropToContent } from '@/lib/crossword-engine';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${docTitle.replace(/\s+/g, '-')}.pdf"`,
+        'Content-Disposition': `attachment; filename="${asciiSafeFilename(docTitle)}.pdf"`,
         'X-File-Url': encodeURIComponent(fileUrl),
         'X-Placed-Count': String(placed.length),
         'X-Requested-Count': String(n),

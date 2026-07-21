@@ -3,8 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   newWorksheetDoc, drawThemeBorder, drawThemeHeader, wrapLines, uploadWorksheetPdf,
-  PAGE_W, PAGE_H, INK, NAVY, GRAY, LINE,
-} from '@/lib/worksheet-pdf';
+  PAGE_W, PAGE_H, INK, NAVY, GRAY, LINE, asciiSafeFilename} from '@/lib/worksheet-pdf';
 import { fleschKincaidGrade } from '@/lib/readability';
 import { errorMessage } from '@/lib/error-message';
 
@@ -294,7 +293,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${docTitle.replace(/\s+/g, '-')}.pdf"`,
+        'Content-Disposition': `attachment; filename="${asciiSafeFilename(docTitle)}.pdf"`,
         'X-File-Url': encodeURIComponent(fileUrl),
         'X-Levels-Meta': encodeURIComponent(JSON.stringify(levels.map((l) => ({
           label: l.levelLabel, targetGrade: l.targetGrade, actualGrade: l.actualGrade, gradeGapFlag: l.gradeGapFlag, exemplarsUsed: l.exemplarsUsed,

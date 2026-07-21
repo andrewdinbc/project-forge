@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, PAGE_W, PAGE_H, INK, NAVY } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, PAGE_W, PAGE_H, INK, NAVY, asciiSafeFilename} from '@/lib/worksheet-pdf';
 import { SHAPES } from '@/lib/dot-shapes';
 import { rgb } from 'pdf-lib';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const bytes = await doc.save();
     const fileUrl = await uploadWorksheetPdf(admin, userId, bytes, 'dot-to-dots', `${docTitle}.pdf`);
     return new NextResponse(new Uint8Array(bytes), {
-      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${docTitle.replace(/\s+/g, '-')}.pdf"`, 'X-File-Url': encodeURIComponent(fileUrl), 'X-Shape-Used': shapeKey },
+      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${asciiSafeFilename(docTitle)}.pdf"`, 'X-File-Url': encodeURIComponent(fileUrl), 'X-Shape-Used': shapeKey },
     });
   } catch (e) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });

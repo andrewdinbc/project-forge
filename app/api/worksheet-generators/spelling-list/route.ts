@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, PAGE_W, PAGE_H, INK, NAVY, LINE } from '@/lib/worksheet-pdf';
+import { newWorksheetDoc, addThemedWorksheetPage, loadBundleTheme, drawThemeBorder, uploadWorksheetPdf, PAGE_W, PAGE_H, INK, NAVY, LINE, asciiSafeFilename} from '@/lib/worksheet-pdf';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
 
@@ -86,7 +86,7 @@ Keep it to real, common, classroom-appropriate English words only -- no proper n
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${docTitle.replace(/\s+/g, '-')}.pdf"`,
+        'Content-Disposition': `attachment; filename="${asciiSafeFilename(docTitle)}.pdf"`,
         'X-File-Url': encodeURIComponent(fileUrl),
         'X-Word-List': encodeURIComponent(words.join(',')),
       },
