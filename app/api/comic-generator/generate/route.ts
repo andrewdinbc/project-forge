@@ -3,16 +3,46 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
-import { createResource } from '@/lib/style-lab';
+import { createResource, buildSteeringContext } from '@/lib/style-lab';
 import { incrementGenerationCount } from '@/lib/schema-lab';
 import { generateImageBuffer } from '@/lib/design-assets-gen';
 import { buildComicScriptPrompt, buildCastComicScriptPrompt, drawComicCoverPage, drawComicPage, drawLiteracyQuestionsPage, COMIC_PANEL_STYLE_SUFFIX, COMIC_CAST_CATALOG, PAGE_W, PAGE_H } from '@/lib/comic-generator';
 import { sanitizeAiJsonText } from '@/lib/worksheet-pdf';
+import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
 
 const admin: any = supabaseAdmin;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 300;
+
+const BC_ALIASES = ['bc', 'british columbia', 'british columbia, canada'];
+
+// Standing process (Aj, 2026-07-21): "always should be, start with bc
+// curriculum, next steering documents then make it in the comic book
+// magazine style generator" -- every comic generation, topic or weekly,
+// now grounds its AI script in (1) the official BC curriculum content for
+// the subject+grade if available (same CURRICULUM_ELABORATIONS data and
+// BC-detection pattern inb-generator.ts uses), then (2) Aj's steering
+// documents (buildSteeringContext), before the script-writing prompt even
+// runs. This isn't a one-off for this dinosaur comic -- it's the new
+// default sequence for this whole generator going forward.
+function buildCurriculumBlockForSubject(subject: string, gradeLevel: string, jurisdiction: string): string {
+  const jur = (jurisdiction || 'British Columbia, Canada').trim();
+  const isBC = BC_ALIASES.includes(jur.toLowerCase());
+  if (!isBC) {
+    return `Jurisdiction: ${jur}. Use general knowledge of ${jur}'s official curriculum standards for ${subject}, Grade ${gradeLevel}. Stay conservative rather than inventing specific standard codes you're not confident about.`;
+  }
+  const subjectKey = (ELABORATIONS_SUBJECT_MAP as any)[subject];
+  const curriculumGrade = subjectKey ? (CURRICULUM_ELABORATIONS as any)[subjectKey]?.[gradeLevel] : null;
+  if (!curriculumGrade) {
+    return `No structured BC curriculum data found for ${subject} Grade ${gradeLevel} -- use general grade-appropriate BC curriculum knowledge.`;
+  }
+  const elaborationLines = (curriculumGrade.elaborations || [])
+    .slice(0, 4)
+    .map((e: any) => `${e.term}: ${e.detail}`)
+    .join(' | ');
+  return `Official BC Curriculum for ${subject}, Grade ${gradeLevel}:\nBig Ideas: ${curriculumGrade.bigIdeas.join(' | ')}\nContent: ${curriculumGrade.content.join(' | ')}${elaborationLines ? `\nKey elaborations: ${elaborationLines}` : ''}`;
+}
 
 // Comic Book Article / Weekly Reader Generator (Aj, 2026-07-21): the
 // comic-book-style branch of the "Classroom Current Events Periodical"
@@ -173,7 +203,7 @@ export async function POST(request: NextRequest) {
       userId, mode, subject, topic, gradeLevel,
       panelCount = 6, imageProvider = 'gemini',
       weekStart, weekEnd, lessonPlannerUserId,
-      schemaId, artMode = 'full',
+      schemaId, artMode = 'full', jurisdiction = 'British Columbia, Canada',
     } = body || {};
 
     if (!userId || !mode || !gradeLevel) {
@@ -200,9 +230,29 @@ export async function POST(request: NextRequest) {
       weeklyContext = formatWeeklyContext(digestUsed);
     }
 
+    // Step 1 of the standing process: BC curriculum grounding. Topic mode
+    // grounds against the one subject given; weekly mode grounds against
+    // every subject in the digest (usually 2-3), each looked up
+    // separately since a cross-subject week has no single "the" subject.
+    let curriculumBlock: string;
+    if (mode === 'topic') {
+      curriculumBlock = buildCurriculumBlockForSubject(subject, gradeLevel, jurisdiction);
+    } else {
+      const subjects: string[] = (digestUsed?.subjectContent || []).map((s: any) => s.subject);
+      curriculumBlock = subjects.length
+        ? subjects.map((s) => buildCurriculumBlockForSubject(s, gradeLevel, jurisdiction)).join('\n\n')
+        : `No subjects found for this week yet, so no curriculum lookup to run -- see the digest above.`;
+    }
+
+    // Step 2 of the standing process: Aj's steering documents. Best-effort
+    // -- a steering fetch failure shouldn't block generation, same
+    // fallback pattern inb-generator.ts uses.
+    const steeringContext = await buildSteeringContext(userId).catch(() => '');
+
+    // Step 3: hand both grounding blocks to the comic script prompt.
     const scriptPrompt = artMode === 'cast'
-      ? buildCastComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext })
-      : buildComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext });
+      ? buildCastComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext, curriculumBlock, steeringContext })
+      : buildComicScriptPrompt({ mode, subject, topic, gradeLevel, panelCount: count, weeklyContext, curriculumBlock, steeringContext });
     const scriptResp = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 2200,
@@ -334,6 +384,10 @@ export async function POST(request: NextRequest) {
       failedPanels,
       literacyQuestions: script.literacyQuestions,
       digestUsed: mode === 'weekly' ? digestUsed : undefined,
+      groundingUsed: {
+        curriculumBlock,
+        steeringContextLength: (steeringContext || '').length,
+      },
     });
   } catch (e) {
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
