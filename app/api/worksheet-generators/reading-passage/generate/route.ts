@@ -256,12 +256,6 @@ export async function POST(request: NextRequest) {
           provider: imageProvider,
         });
         illustrationImg = contentType === 'image/jpeg' ? await doc.embedJpg(buffer) : await doc.embedPng(buffer);
-      try {
-        const { buffer, contentType } = await generateImageBuffer({
-          prompt: `an editorial illustration for a classroom reading article about "${topic.trim()}", clean simple line art with light shading, black and white, plain white background, no text or labels in the image, journalistic non-fiction magazine illustration style`,
-          provider: imageProvider,
-        });
-        illustrationImg = contentType === 'image/jpeg' ? await doc.embedJpg(buffer) : await doc.embedPng(buffer);
       } catch (e) {
         console.error('reading-passage auto-illustration failed (non-fatal, passage still generates without an image):', errorMessage(e));
         illustrationImg = null; // decorative, never block generation
