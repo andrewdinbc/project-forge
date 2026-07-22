@@ -3,9 +3,23 @@ import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   newWorksheetDoc, drawThemeBorder, drawThemeHeader, wrapLines, uploadWorksheetPdf,
-  PAGE_W, PAGE_H, INK, NAVY, GRAY, LINE, asciiSafeFilename} from '@/lib/worksheet-pdf';
+  PAGE_W, PAGE_H, INK, NAVY, GRAY, LINE, asciiSafeFilename, sanitizeAiJsonText} from '@/lib/worksheet-pdf';
 import { fleschKincaidGrade } from '@/lib/readability';
 import { errorMessage } from '@/lib/error-message';
+import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
+import { buildSteeringContext } from '@/lib/style-lab';
+import { incrementGenerationCount } from '@/lib/schema-lab';
+import { generateImageBuffer } from '@/lib/design-assets-gen';
+
+// Schema Lab IDs this route fulfills -- used to actually increment
+// generation_count on success, which this route never did before (2026-
+// 07-22 fix, same class of dead-tracking bug already fixed on the INB and
+// Choice Board generators): single-level runs count against the basic
+// Reading Comprehension Packet schema, differentiated runs count against
+// the Differentiated Reading Passage (Lexile-Leveled) schema.
+const SCHEMA_ID_BASIC = '373eb4ea-72e2-45ea-b444-a533c7c030b0';
+const SCHEMA_ID_DIFFERENTIATED = '667e6e22-4c65-45e7-8507-19d0d26991db';
+const BC_ALIASES = ['bc', 'british columbia', 'british columbia, canada'];
 
 // Reading Passage Generator (Aj, 2026-07-20): "Pick the topic (for example
 // dinosaurs), it will pull up the schema, input or create relevant art,
@@ -54,7 +68,29 @@ async function getHelpsExemplars(targetGrade: number, count = 3) {
   return sorted.slice(0, count);
 }
 
-function buildLevelPrompt(topic: string, targetGrade: number, levelLabel: string | null, exemplars: any[]) {
+// Standing process (Aj, 2026-07-21, applied here 2026-07-22): every content
+// generator grounds its writing in (1) BC curriculum content for the
+// subject+grade if available, then (2) Aj's steering documents, before the
+// AI writes anything -- same pattern already standing on the Comic
+// Generator. A topic like "how volcanoes form" only becomes genuinely
+// curriculum-aligned content (not just generically accurate) when it's
+// actually checked against what BC Grade 4 Science says to teach.
+function buildCurriculumBlock(subject: string, gradeLevel: number, jurisdiction: string): string {
+  const jur = (jurisdiction || 'British Columbia, Canada').trim();
+  const isBC = BC_ALIASES.includes(jur.toLowerCase());
+  const gradeKey = String(Math.round(gradeLevel));
+  if (!isBC) {
+    return `Jurisdiction: ${jur}. Use general knowledge of ${jur}'s official curriculum standards for ${subject}, Grade ${gradeKey}. Stay conservative rather than inventing specific standard codes you're not confident about.`;
+  }
+  const subjectKey = (ELABORATIONS_SUBJECT_MAP as any)[subject];
+  const curriculumGrade = subjectKey ? (CURRICULUM_ELABORATIONS as any)[subjectKey]?.[gradeKey] : null;
+  if (!curriculumGrade) {
+    return `No structured BC curriculum data found for ${subject} Grade ${gradeKey} -- use general grade-appropriate BC curriculum knowledge.`;
+  }
+  return `Official BC Curriculum for ${subject}, Grade ${gradeKey}:\nBig Ideas: ${curriculumGrade.bigIdeas.join(' | ')}\nContent: ${curriculumGrade.content.join(' | ')}`;
+}
+
+function buildLevelPrompt(topic: string, targetGrade: number, levelLabel: string | null, exemplars: any[], groundingBlock: string) {
   const exemplarBlock = exemplars
     .map((e, i) => `Example ${i + 1} (Flesch-Kincaid grade ${e.flesch_kincaid_grade}, ${e.word_count} words):\n${e.text}`)
     .join('\n\n---\n\n');
@@ -63,7 +99,7 @@ function buildLevelPrompt(topic: string, targetGrade: number, levelLabel: string
 
 Topic: "${topic}"
 Target reading level: US grade ${targetGrade.toFixed(1)} (Flesch-Kincaid)${levelLabel ? ` -- this is the "${levelLabel}" tier of a differentiated set covering the same facts at 3 complexity levels` : ''}
-
+${groundingBlock ? `\n${groundingBlock}\n\nGround the passage's factual content in the curriculum info above where relevant -- don't just write generic facts about the topic if a specific Big Idea or content point applies. Aj's steering guidance (writing style/pedagogy preferences), if present above, should also shape tone and approach.\n` : ''}
 Below are real examples from the HELPS Curriculum (Begeny et al., a published, professionally-leveled reading fluency program), at or near this exact grade level. Study their SENTENCE LENGTH, VOCABULARY DIFFICULTY, and PARAGRAPH STRUCTURE and match that style closely. Do NOT reuse their topics, characters, names, or phrases in any way -- write something entirely new about "${topic}".
 
 ${exemplarBlock}
@@ -89,9 +125,9 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
 }`;
 }
 
-async function generateLevel(topic: string, targetGrade: number, levelLabel: string | null) {
+async function generateLevel(topic: string, targetGrade: number, levelLabel: string | null, groundingBlock: string) {
   const exemplars = await getHelpsExemplars(targetGrade, 3);
-  const prompt = buildLevelPrompt(topic, targetGrade, levelLabel, exemplars);
+  const prompt = buildLevelPrompt(topic, targetGrade, levelLabel, exemplars, groundingBlock);
   const res = await anthropic.messages.create({
     model: 'claude-sonnet-4-5',
     max_tokens: 2000,
@@ -106,6 +142,11 @@ async function generateLevel(topic: string, targetGrade: number, levelLabel: str
     parsed = match ? JSON.parse(match[0]) : null;
   }
   if (!parsed?.passage) throw new Error(`Could not parse generated passage for target grade ${targetGrade}`);
+  // Sanitize every generated string in one pass so downstream drawText
+  // calls never choke on a smart quote/em dash pdf-lib's base WinAnsi
+  // font can't encode -- this route never had this guard before (2026-
+  // 07-22 fix); same choke point pattern the comic/INB generators use.
+  parsed = sanitizeAiJsonText(parsed);
 
   const scored = fleschKincaidGrade(parsed.passage);
   return {
@@ -141,12 +182,22 @@ export async function POST(request: NextRequest) {
   try {
     const {
       userId, topic, mode, gradeLevel, borderPartId, headerPartId, illustrationUrl, title,
-      precomposedLevels, returnJson,
+      precomposedLevels, returnJson, subject = 'General', jurisdiction = 'British Columbia, Canada',
+      autoIllustrate = true, imageProvider = 'gemini',
     } = (await request.json()) || {};
     if (!userId || !topic?.trim()) return NextResponse.json({ error: 'userId and topic are required' }, { status: 400 });
     if (!gradeLevel || Number.isNaN(Number(gradeLevel))) return NextResponse.json({ error: 'gradeLevel (a number, e.g. 3) is required' }, { status: 400 });
     const baseGrade = Number(gradeLevel);
     const isDifferentiated = mode === 'differentiated';
+
+    // Standing process step 1+2: BC curriculum, then steering documents.
+    // Best-effort -- a steering fetch failure shouldn't block generation.
+    const curriculumBlock = buildCurriculumBlock(subject, baseGrade, jurisdiction);
+    const steeringContext = await buildSteeringContext(userId).catch(() => '');
+    const groundingBlock = [
+      curriculumBlock,
+      steeringContext ? `Aj's steering guidance (writing style/pedagogy preferences to follow):\n${steeringContext}` : '',
+    ].filter(Boolean).join('\n\n');
 
     // Asset Modifier handoff (Aj, 2026-07-20): "loaded into asset modifier
     // so I can adjust and modify... AI writing box... drag tool." Two new
@@ -177,7 +228,7 @@ export async function POST(request: NextRequest) {
       const levelPlan = isDifferentiated
         ? TIERS.map((t) => ({ label: t.label, grade: Math.max(0.5, baseGrade + t.offset) }))
         : [{ label: null, grade: baseGrade }];
-      levels = await Promise.all(levelPlan.map((p) => generateLevel(topic.trim(), p.grade, p.label)));
+      levels = await Promise.all(levelPlan.map((p) => generateLevel(topic.trim(), p.grade, p.label, groundingBlock)));
     }
 
     if (returnJson) {
@@ -191,6 +242,21 @@ export async function POST(request: NextRequest) {
     let illustrationImg: any = null;
     if (illustrationUrl) {
       try { illustrationImg = await embedIllustration(doc, illustrationUrl); } catch { illustrationImg = null; /* decorative, never block generation */ }
+    } else if (autoIllustrate) {
+      // Matches the original "Informational article pages... with
+      // accompanying images" component from the Classroom Current Events
+      // Periodical schema this whole generator branch exists to fulfill --
+      // one image, generated once and reused across all levels of a
+      // differentiated set, so Support/On-Level/Challenge genuinely look
+      // like the same worksheet (Aj: "differentiated without looking
+      // different"), not three different-looking documents.
+      try {
+        const { buffer, contentType } = await generateImageBuffer({
+          prompt: `an editorial illustration for a classroom reading article about "${topic.trim()}", clean simple line art with light shading, black and white, plain white background, no text or labels in the image, journalistic non-fiction magazine illustration style`,
+          provider: imageProvider,
+        });
+        illustrationImg = contentType === 'image/jpeg' ? await doc.embedJpg(buffer) : await doc.embedPng(buffer);
+      } catch { illustrationImg = null; /* decorative, never block generation */ }
     }
 
     for (const level of levels) {
@@ -289,6 +355,8 @@ export async function POST(request: NextRequest) {
 
     const bytes = await doc.save();
     const fileUrl = await uploadWorksheetPdf(admin, userId, bytes, 'reading-passage', `${docTitle}.pdf`);
+
+    try { await incrementGenerationCount(userId, isDifferentiated ? SCHEMA_ID_DIFFERENTIATED : SCHEMA_ID_BASIC); } catch { /* non-fatal -- a tracking failure shouldn't fail a generation that already succeeded */ }
 
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
