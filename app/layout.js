@@ -1,5 +1,6 @@
 import { Inter } from 'next/font/google';
 import './globals.css';
+import MorpheusChat from '../components/MorpheusChat';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -15,6 +16,7 @@ export default function RootLayout({ children }) {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
           {children}
         </div>
+              <MorpheusChat productName="Project Forge" />
       </body>
     </html>
   );
