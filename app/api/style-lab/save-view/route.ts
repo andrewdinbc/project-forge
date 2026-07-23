@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { errorMessage } from '@/lib/error-message';
 
 const admin: any = supabaseAdmin;
 
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, url: urlData.publicUrl, part: inserted });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
