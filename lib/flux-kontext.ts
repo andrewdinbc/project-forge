@@ -26,7 +26,7 @@ const REPLICATE_MODEL = 'black-forest-labs/flux-kontext-pro';
 // If the image is already a raster format, return the URL unchanged --
 // zero extra cost for the common case. Only SVGs get fetched, converted,
 // and re-uploaded.
-async function ensureRasterImage(imageUrl: string): Promise<string> {
+export async function ensureRasterImage(imageUrl: string): Promise<string> {
   if (!imageUrl.toLowerCase().includes('.svg')) return imageUrl;
 
   const res = await fetch(imageUrl);
