@@ -71,7 +71,7 @@ const GENERATORS: Record<string, { endpoint: string; description: string; params
   bingo: {
     endpoint: '/api/worksheet-generators/bingo',
     description: 'Bingo boards for vocabulary/review.',
-    params: 'userId, words (array of strings), boardCount (default 10), freeSpace (default true), title',
+    params: 'userId, words (array of strings -- REAL HARD MINIMUM: 24 words when freeSpace is true (default), since a 5x5 board minus the free center needs 24 squares. If the user asks for fewer, generate 24 REAL topically-relevant words anyway and say so plainly in your reasoning -- never pass fewer than 24 or the generator will reject it), boardCount (default 10), freeSpace (default true), title',
     producesRealFile: true,
   },
   sudoku: {
@@ -121,7 +121,10 @@ export async function POST(request: NextRequest) {
     const system =
       'You are the Forge Orchestrator classification step. Given a freeform instruction, pick the ONE real generator that ' +
       'actually matches it, and construct a valid parameter object for its REAL contract below -- do not invent fields that ' +
-      "aren't listed, and do not omit required ones. If nothing genuinely matches, say so honestly rather than forcing a bad fit.\n\n" +
+      "aren't listed, and do not omit required ones. Pay close attention to any real hard constraints noted in a generator's " +
+      'params (like a minimum array length) -- if the user asked for fewer than a real minimum, generate the real minimum ' +
+      'anyway with genuinely relevant, on-topic content, and say so plainly in your reasoning rather than passing something ' +
+      "that will fail the generator's own validation. If nothing genuinely matches, say so honestly rather than forcing a bad fit.\n\n" +
       GENERATOR_CATALOG +
       '\n\nRespond with ONLY a JSON object, no other text: {"generator": "<id from the list above, or null if nothing fits>", ' +
       '"params": {<real params for that generator, NOT including userId>}, "reasoning": "<one sentence>"}';
