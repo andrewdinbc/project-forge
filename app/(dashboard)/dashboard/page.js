@@ -7,6 +7,7 @@ import { getUserBundles } from '@/lib/bundles';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import DashboardAssistant from '@/components/DashboardAssistant';
+import BuildAssistant from '@/components/BuildAssistant';
 
 export default function DashboardPage() {
   const [user, setUser] = useState(null);
@@ -92,6 +93,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <DashboardAssistant />
+      <BuildAssistant />
       {/* Header */}
       <div>
         <h1 className="text-4xl font-bold text-slate-900">Dashboard</h1>
