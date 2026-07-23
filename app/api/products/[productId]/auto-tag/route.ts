@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { extractPdfPagesText } from '@/lib/pdf-page-extract';
 import { deleteAllComponentsForProduct, addComponents } from '@/lib/product-components';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
+import { errorMessage } from '@/lib/error-message';
 
 // AI auto-tagging: reads a product's PDF page-by-page and identifies which
 // pages belong to which structural category (Cover Page, Answer Keys,
@@ -103,7 +104,7 @@ Respond with ONLY a JSON array, no markdown fences, no other text:
 
     return NextResponse.json({ components: saved, pageCount: pages.length, taggedCount: saved.length });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
