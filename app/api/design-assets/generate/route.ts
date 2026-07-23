@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateImageBuffer, STYLE_SUFFIXES, LINE_ART_STYLE_SUFFIX } from '@/lib/design-assets-gen';
+import { errorMessage } from '@/lib/error-message';
 
 // supabaseAdmin is a lazily-initialized Proxy from a plain .js file (see
 // lib/supabase.js), so TypeScript sees it as `{}` with no properties --
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     const { data: urlData } = admin.storage.from('design-assets').getPublicUrl(path);
     return NextResponse.json({ url: urlData.publicUrl, provider });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     // Provider quota / rate-limit conditions reflect the caller's own account
     // state, not a server fault — return 429 so they aren't miscounted as 500s
     // in error dashboards / by the auditor. The client already shows a friendly
