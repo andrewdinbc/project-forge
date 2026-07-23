@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { errorMessage } from '@/lib/error-message';
+import { ensureRasterImage } from '@/lib/flux-kontext';
 
 const admin: any = supabaseAdmin;
 
@@ -38,6 +39,12 @@ const REPLICATE_MODEL = 'black-forest-labs/flux-kontext-pro';
 
 async function runReplicate(referenceImageUrl: string, prompt: string, seed: number) {
   const token = process.env.REPLICATE_API_TOKEN;
+  // 2026-07-23, real bug found via live testing: FLUX Kontext rejects
+  // SVG input (E006). This route had its own separate, duplicated
+  // Replicate-calling code that never went through the shared fix in
+  // lib/flux-kontext.ts -- using the same real conversion helper here
+  // now instead of a second copy of the fix.
+  const rasterImageUrl = await ensureRasterImage(referenceImageUrl);
   const res = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_MODEL}/predictions`, {
     method: 'POST',
     headers: {
@@ -48,7 +55,7 @@ async function runReplicate(referenceImageUrl: string, prompt: string, seed: num
     body: JSON.stringify({
       input: {
         prompt,
-        input_image: referenceImageUrl,
+        input_image: rasterImageUrl,
         aspect_ratio: '1:1',
         output_format: 'png',
         seed,
