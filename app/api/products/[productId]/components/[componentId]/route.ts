@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateComponent, deleteComponent } from '@/lib/product-components';
+import { errorMessage } from '@/lib/error-message';
 
 export async function PATCH(
   request: NextRequest,
@@ -10,7 +11,7 @@ export async function PATCH(
     const component = await updateComponent(params.componentId, body);
     return NextResponse.json({ success: true, component });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -23,7 +24,7 @@ export async function DELETE(
     await deleteComponent(params.componentId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
