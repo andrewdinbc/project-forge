@@ -129,13 +129,37 @@ export async function POST(request: NextRequest) {
       '\n\nRespond with ONLY a JSON object, no other text: {"generator": "<id from the list above, or null if nothing fits>", ' +
       '"params": {<real params for that generator, NOT including userId>}, "reasoning": "<one sentence>"}';
 
-    const raw = await callClaude(system, instruction, 1000);
+    // 2026-07-23, real bug found via live testing: 1000 tokens wasn't
+    // enough headroom for a real word list (e.g. 24 genuine, topically-
+    // relevant words for a bingo board) plus the surrounding JSON and
+    // reasoning -- the response was silently truncated mid-generation,
+    // producing malformed JSON that still partially parsed, passing
+    // through a single garbage word instead of the real list. Real
+    // headroom now, plus an explicit check that word-list-shaped params
+    // actually came back as real arrays before trusting them.
+    const raw = await callClaude(system, instruction, 3000);
     let classification: any;
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       classification = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
     } catch {
-      return NextResponse.json({ error: 'Could not classify the instruction into a real generator', raw }, { status: 500 });
+      return NextResponse.json({ error: 'Could not classify the instruction into a real generator -- the response may have been truncated', raw }, { status: 500 });
+    }
+
+    // Sanity check: if any param that should genuinely be an array of
+    // several real items came back as something else (a string, or a
+    // suspiciously short array), fail clearly rather than silently
+    // passing something the real generator will reject with a confusing
+    // downstream error.
+    if (classification.params) {
+      for (const [key, value] of Object.entries(classification.params)) {
+        if ((key === 'words' || key === 'entries') && !Array.isArray(value)) {
+          return NextResponse.json({
+            error: `The generated ${key} field wasn't a real array -- likely a truncated or malformed classification response. Try again.`,
+            generator: classification.generator,
+          }, { status: 500 });
+        }
+      }
     }
 
     if (!classification.generator || !GENERATORS[classification.generator]) {
