@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createTPTChecklist, formatChecklistForEmail } from "@/lib/tpt-checklist";
+import { errorMessage } from '@/lib/error-message';
 
 export async function GET(
   request: NextRequest,
@@ -72,8 +73,7 @@ export async function GET(
     console.error("Checklist generation error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Failed to generate checklist",
+        error: errorMessage(error),
       },
       { status: 500 }
     );
