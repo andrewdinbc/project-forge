@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProduct } from '@/lib/products';
 import { supabaseAdmin } from '@/lib/supabase';
 import { renderPdfPageToPng, cropPngRegion } from '@/lib/pdf-page-render';
+import { errorMessage } from '@/lib/error-message';
 
 const admin: any = supabaseAdmin;
 
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest, { params }: { params: { product
 
     return NextResponse.json({ url: urlData.publicUrl, title: cropTitle });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
