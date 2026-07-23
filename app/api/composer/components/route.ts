@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getComponentsForProducts } from '@/lib/product-components';
+import { errorMessage } from '@/lib/error-message';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
     const components = await getComponentsForProducts(productIds);
     return NextResponse.json({ success: true, components });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
