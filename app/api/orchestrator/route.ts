@@ -244,6 +244,12 @@ export async function POST(request: NextRequest) {
           error: `${classification.generator} failed: ${result.error || dispatchRes.status}`,
           generator: classification.generator,
           reasoning: classification.reasoning,
+          // Temporary diagnostic, per Aj's "no flaws" bar -- four
+          // failures in a row on this exact case even after real,
+          // programmatic validation was added means something isn't
+          // matching my understanding of the code's own behavior.
+          // Showing the real params actually sent, not guessing further.
+          debugParamsSent: classification.params,
         }, { status: 502 });
       }
     }
