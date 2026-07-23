@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { errorMessage } from '@/lib/error-message';
 
 const admin: any = supabaseAdmin;
 
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ parts: data || [] });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ ok: true, part: data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -83,7 +84,7 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
