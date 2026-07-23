@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
+import { errorMessage } from '@/lib/error-message';
 
 // Lets a teacher describe in plain English which tagged components they
 // want included (e.g. "I like the interactive notebook aspects of Force
@@ -112,7 +113,7 @@ Respond with ONLY a JSON object, no markdown fences, no other text:
 
     return NextResponse.json({ include, exclude, generated, reasoning: parsed.reasoning || '' });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
