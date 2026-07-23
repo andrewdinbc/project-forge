@@ -135,7 +135,10 @@ export async function POST(request: NextRequest) {
       "aren't listed, and do not omit required ones. Pay close attention to any real hard constraints noted in a generator's " +
       'params (like a minimum array length) -- if the user asked for fewer than a real minimum, generate the real minimum ' +
       'anyway with genuinely relevant, on-topic content, and say so plainly in your reasoning rather than passing something ' +
-      "that will fail the generator's own validation. If nothing genuinely matches, say so honestly rather than forcing a bad fit.\n\n" +
+      "that will fail the generator's own validation. NEVER meet a minimum by duplicating items -- that technically satisfies " +
+      'the count but produces a genuinely worse result (e.g. a bingo board with the same term appearing twice is a real quality ' +
+      'problem, not a valid solution). Every item must be genuinely distinct. If nothing genuinely matches, say so honestly ' +
+      "rather than forcing a bad fit.\n\n" +
       GENERATOR_CATALOG +
       '\n\nRespond with ONLY a JSON object, no other text: {"generator": "<id from the list above, or null if nothing fits>", ' +
       '"params": {<real params for that generator, NOT including userId>}, "reasoning": "<one sentence>"}';
@@ -183,7 +186,9 @@ export async function POST(request: NextRequest) {
           const expandSystem =
             `The generator needs exactly ${minLen} real, genuinely relevant items. You currently have ${lines.length}: ` +
             `${JSON.stringify(lines)}. Generate the FULL list of ${minLen} real, topically-appropriate items (keep any good ` +
-            `ones already listed, add more in the same spirit). Respond with ONLY a JSON array of exactly ${minLen} strings, nothing else.`;
+            `ones already listed, add more in the same spirit). Every item must be genuinely DISTINCT -- do not repeat any ` +
+            `item to pad the count, that produces a worse result even though it technically satisfies the length. Respond with ` +
+            `ONLY a JSON array of exactly ${minLen} strings, nothing else.`;
           const expandRaw = await callClaude(expandSystem, instruction, 2000);
           try {
             const arrMatch = expandRaw.match(/\[[\s\S]*\]/);
