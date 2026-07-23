@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { errorMessage } from '@/lib/error-message';
 
 // Lets Aj ask plain-language questions about how to use Project Forge
 // itself (e.g. "I like the color-by-number system, how do I apply it to a
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     const reply = response.content.find((b) => b.type === 'text')?.text || '';
     return NextResponse.json({ reply });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
