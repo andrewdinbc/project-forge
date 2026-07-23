@@ -59,7 +59,7 @@ const GENERATORS: Record<string, { endpoint: string; description: string; params
   word_search: {
     endpoint: '/api/worksheet-generators/word-search',
     description: 'A word search puzzle.',
-    params: 'userId, words (array of strings), difficulty ("basic"|harder), title',
+    params: 'userId, words (a SINGLE STRING, one word per line separated by real newline characters -- NOT a JSON array, confirmed via the real route source: String(words).split("\\n")), difficulty ("basic"|harder), title',
     producesRealFile: true,
   },
   crossword: {
@@ -71,7 +71,7 @@ const GENERATORS: Record<string, { endpoint: string; description: string; params
   bingo: {
     endpoint: '/api/worksheet-generators/bingo',
     description: 'Bingo boards for vocabulary/review.',
-    params: 'userId, words (array of strings -- REAL HARD MINIMUM: 24 words when freeSpace is true (default), since a 5x5 board minus the free center needs 24 squares. If the user asks for fewer, generate 24 REAL topically-relevant words anyway and say so plainly in your reasoning -- never pass fewer than 24 or the generator will reject it), boardCount (default 10), freeSpace (default true), title',
+    params: 'userId, words (a SINGLE STRING with one word per line, separated by real newline characters -- NOT a JSON array, the real route does String(words).split("\\n") so an array gets silently collapsed into one item. REAL HARD MINIMUM: 24 lines when freeSpace is true (default). If the user asks for fewer, generate 24 REAL topically-relevant words anyway, joined with \\n, and say so plainly in your reasoning), boardCount (default 10), freeSpace (default true), title',
     producesRealFile: true,
   },
   sudoku: {
@@ -83,7 +83,7 @@ const GENERATORS: Record<string, { endpoint: string; description: string; params
   flashcards: {
     endpoint: '/api/worksheet-generators/flashcards',
     description: 'Printable flashcards.',
-    params: 'userId, words (array of strings, or {front,back} pairs), color, title',
+    params: 'userId, words (a SINGLE STRING, one term per line separated by real newline characters -- NOT a JSON array, confirmed via the real route source which parses it as lines), color, title',
     producesRealFile: true,
   },
   quiz: {
@@ -163,28 +163,33 @@ export async function POST(request: NextRequest) {
     // correction call whose ONLY job is expanding that specific list --
     // much more reliable than asking one call to classify, reason, AND
     // generate a long list all at once.
+    // 2026-07-23, real root cause found after 4 live-tested failures:
+    // these generators parse their word-list param as a NEWLINE-
+    // SEPARATED STRING (String(words).split('\n')), not a JSON array.
+    // The classification step can still reasonably produce either shape
+    // depending on how it interprets the (now-corrected) instructions
+    // above, so this coerces whatever comes back into the real expected
+    // string shape, and counts real lines against the real minimum --
+    // not array length, which was the actual bug the whole time.
     if (classification.params && classification.generator) {
       const minimums = MIN_LENGTHS[classification.generator] || {};
       for (const [key, minLen] of Object.entries(minimums)) {
-        const current = classification.params[key];
-        if (!Array.isArray(current)) {
-          return NextResponse.json({
-            error: `The generated ${key} field wasn't a real array -- likely a malformed classification response. Try again.`,
-            generator: classification.generator,
-          }, { status: 500 });
-        }
-        if (current.length < minLen) {
+        let current = classification.params[key];
+        let lines: string[] = Array.isArray(current)
+          ? current.map((x) => String(x).trim()).filter(Boolean)
+          : String(current || '').split('\n').map((x) => x.trim()).filter(Boolean);
+
+        if (lines.length < minLen) {
           const expandSystem =
-            `The generator needs exactly ${minLen} real, genuinely relevant items for its "${key}" field. You currently have ` +
-            `${current.length}: ${JSON.stringify(current)}. Generate the FULL list of ${minLen} real, topically-appropriate ` +
-            `items (keep any good ones already listed, add more in the same spirit). Respond with ONLY a JSON array of ` +
-            `exactly ${minLen} strings, nothing else.`;
+            `The generator needs exactly ${minLen} real, genuinely relevant items. You currently have ${lines.length}: ` +
+            `${JSON.stringify(lines)}. Generate the FULL list of ${minLen} real, topically-appropriate items (keep any good ` +
+            `ones already listed, add more in the same spirit). Respond with ONLY a JSON array of exactly ${minLen} strings, nothing else.`;
           const expandRaw = await callClaude(expandSystem, instruction, 2000);
           try {
             const arrMatch = expandRaw.match(/\[[\s\S]*\]/);
             const expanded = JSON.parse(arrMatch ? arrMatch[0] : expandRaw);
             if (Array.isArray(expanded) && expanded.length >= minLen) {
-              classification.params[key] = expanded.slice(0, minLen);
+              lines = expanded.slice(0, minLen).map((x: any) => String(x).trim());
             } else {
               return NextResponse.json({
                 error: `Could not expand ${key} to the required ${minLen} items even after a correction attempt.`,
@@ -198,6 +203,9 @@ export async function POST(request: NextRequest) {
             }, { status: 500 });
           }
         }
+        // Real fix: join as the newline-separated STRING these
+        // generators actually expect, not an array.
+        classification.params[key] = lines.join('\n');
       }
     }
 
@@ -244,12 +252,6 @@ export async function POST(request: NextRequest) {
           error: `${classification.generator} failed: ${result.error || dispatchRes.status}`,
           generator: classification.generator,
           reasoning: classification.reasoning,
-          // Temporary diagnostic, per Aj's "no flaws" bar -- four
-          // failures in a row on this exact case even after real,
-          // programmatic validation was added means something isn't
-          // matching my understanding of the code's own behavior.
-          // Showing the real params actually sent, not guessing further.
-          debugParamsSent: classification.params,
         }, { status: 502 });
       }
     }
