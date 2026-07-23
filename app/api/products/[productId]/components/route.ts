@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addComponent, getProductComponents } from '@/lib/product-components';
+import { errorMessage } from '@/lib/error-message';
 
 export async function GET(
   _request: NextRequest,
@@ -9,7 +10,7 @@ export async function GET(
     const components = await getProductComponents(params.productId);
     return NextResponse.json({ success: true, components });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -43,7 +44,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, component }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
