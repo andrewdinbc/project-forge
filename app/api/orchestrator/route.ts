@@ -151,14 +151,35 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, ...classification.params }),
     });
-    const result = await dispatchRes.json();
 
-    if (!dispatchRes.ok) {
-      return NextResponse.json({
-        error: `${classification.generator} failed: ${result.error || dispatchRes.status}`,
-        generator: classification.generator,
-        reasoning: classification.reasoning,
-      }, { status: 502 });
+    // Real difference found via live testing, not assumed: some
+    // generators (comic-generator, product-builder, inb-generator)
+    // return JSON with a URL inside it. Others (most worksheet-
+    // generators) return the raw PDF bytes directly, with the real
+    // saved file URL in a custom X-File-Url response header instead --
+    // handle both shapes rather than assuming every generator behaves
+    // the same way.
+    const contentType = dispatchRes.headers.get('content-type') || '';
+    let result: any;
+    if (contentType.includes('application/pdf')) {
+      if (!dispatchRes.ok) {
+        return NextResponse.json({
+          error: `${classification.generator} failed (${dispatchRes.status})`,
+          generator: classification.generator,
+          reasoning: classification.reasoning,
+        }, { status: 502 });
+      }
+      const fileUrlHeader = dispatchRes.headers.get('x-file-url');
+      result = { pdfUrl: fileUrlHeader ? decodeURIComponent(fileUrlHeader) : null };
+    } else {
+      result = await dispatchRes.json();
+      if (!dispatchRes.ok) {
+        return NextResponse.json({
+          error: `${classification.generator} failed: ${result.error || dispatchRes.status}`,
+          generator: classification.generator,
+          reasoning: classification.reasoning,
+        }, { status: 502 });
+      }
     }
 
     return NextResponse.json({
