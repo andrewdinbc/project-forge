@@ -106,6 +106,17 @@ const GENERATORS: Record<string, { endpoint: string; description: string; params
   },
 };
 
+// Real, hard minimums confirmed directly from each generator's own
+// validation code -- checked programmatically below, not just
+// described in the prompt and hoped for. Three real failures in a row
+// on bingo specifically (same 1-word result every time despite
+// increasingly explicit prompt instructions and more token headroom)
+// showed that trusting the single classification call to always
+// generate a correctly-sized list isn't reliable enough on its own.
+const MIN_LENGTHS: Record<string, Record<string, number>> = {
+  bingo: { words: 24 },
+};
+
 const GENERATOR_CATALOG = Object.entries(GENERATORS)
   .map(([id, g]) => `${id}: ${g.description}\n  Real parameters: ${g.params}`)
   .join('\n\n');
@@ -146,18 +157,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not classify the instruction into a real generator -- the response may have been truncated', raw }, { status: 500 });
     }
 
-    // Sanity check: if any param that should genuinely be an array of
-    // several real items came back as something else (a string, or a
-    // suspiciously short array), fail clearly rather than silently
-    // passing something the real generator will reject with a confusing
-    // downstream error.
-    if (classification.params) {
-      for (const [key, value] of Object.entries(classification.params)) {
-        if ((key === 'words' || key === 'entries') && !Array.isArray(value)) {
+    // Real, programmatic length check -- not just trusting the single
+    // classification call got the count right. If a word-list param is
+    // shorter than the generator's real known minimum, run one focused
+    // correction call whose ONLY job is expanding that specific list --
+    // much more reliable than asking one call to classify, reason, AND
+    // generate a long list all at once.
+    if (classification.params && classification.generator) {
+      const minimums = MIN_LENGTHS[classification.generator] || {};
+      for (const [key, minLen] of Object.entries(minimums)) {
+        const current = classification.params[key];
+        if (!Array.isArray(current)) {
           return NextResponse.json({
-            error: `The generated ${key} field wasn't a real array -- likely a truncated or malformed classification response. Try again.`,
+            error: `The generated ${key} field wasn't a real array -- likely a malformed classification response. Try again.`,
             generator: classification.generator,
           }, { status: 500 });
+        }
+        if (current.length < minLen) {
+          const expandSystem =
+            `The generator needs exactly ${minLen} real, genuinely relevant items for its "${key}" field. You currently have ` +
+            `${current.length}: ${JSON.stringify(current)}. Generate the FULL list of ${minLen} real, topically-appropriate ` +
+            `items (keep any good ones already listed, add more in the same spirit). Respond with ONLY a JSON array of ` +
+            `exactly ${minLen} strings, nothing else.`;
+          const expandRaw = await callClaude(expandSystem, instruction, 2000);
+          try {
+            const arrMatch = expandRaw.match(/\[[\s\S]*\]/);
+            const expanded = JSON.parse(arrMatch ? arrMatch[0] : expandRaw);
+            if (Array.isArray(expanded) && expanded.length >= minLen) {
+              classification.params[key] = expanded.slice(0, minLen);
+            } else {
+              return NextResponse.json({
+                error: `Could not expand ${key} to the required ${minLen} items even after a correction attempt.`,
+                generator: classification.generator,
+              }, { status: 500 });
+            }
+          } catch {
+            return NextResponse.json({
+              error: `Could not expand ${key} to the required ${minLen} items -- correction response was malformed.`,
+              generator: classification.generator,
+            }, { status: 500 });
+          }
         }
       }
     }
