@@ -76,9 +76,25 @@ export async function generateWithGemini(prompt: string, referenceImageBase64?: 
   return Buffer.from(inline.data, 'base64');
 }
 
-export async function generateWithRecraft(prompt: string, referenceImageBase64?: string): Promise<Buffer> {
+// 2026-07-24, real gap found: style/substyle/strength were hardcoded to
+// 'vector_illustration'/'line_art'/0.6 -- fine for the original coloring-
+// page use case, but wrong for anything else. A painterly/watercolor
+// reference image fed through image-to-image would get flattened into
+// clean vector line art regardless of what the reference actually looks
+// like, silently discarding the whole point of reference conditioning.
+// Now overridable per-call, with the original values as the default so
+// every existing caller (coloring pages, icons) is completely unaffected.
+export async function generateWithRecraft(
+  prompt: string,
+  referenceImageBase64?: string,
+  recraftOptions?: { style?: string; substyle?: string; strength?: number }
+): Promise<Buffer> {
   const apiKey = process.env.RECRAFT_API_KEY;
   if (!apiKey) throw new Error('RECRAFT_API_KEY is not set in this project\'s environment variables');
+
+  const style = recraftOptions?.style || 'vector_illustration';
+  const substyle = recraftOptions?.substyle; // no forced default -- some styles (e.g. digital_illustration) have their own substyle vocabulary, an empty substyle is valid and better than a wrong one
+  const strength = recraftOptions?.strength ?? 0.6;
 
   let imageUrl: string | undefined;
 
@@ -91,9 +107,9 @@ export async function generateWithRecraft(prompt: string, referenceImageBase64?:
     const formData = new FormData();
     formData.append('image', new Blob([imageBuffer], { type: mimeType }), 'reference.png');
     formData.append('prompt', prompt);
-    formData.append('strength', '0.6');
-    formData.append('style', 'vector_illustration');
-    formData.append('substyle', 'line_art');
+    formData.append('strength', String(strength));
+    formData.append('style', style);
+    if (substyle) formData.append('substyle', substyle);
 
     const res = await fetch('https://external.api.recraft.ai/v1/images/imageToImage', {
       method: 'POST',
@@ -108,16 +124,12 @@ export async function generateWithRecraft(prompt: string, referenceImageBase64?:
     imageUrl = data?.data?.[0]?.url ?? data?.image?.url;
     if (!imageUrl) throw new Error('Recraft image-to-image did not return an image URL');
   } else {
+    const body: Record<string, any> = { prompt, style, size: '1024x1024', n: 1 };
+    if (substyle) body.substyle = substyle;
     const res = await fetch('https://external.api.recraft.ai/v1/images/generations', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        style: 'vector_illustration',
-        substyle: 'line_art',
-        size: '1024x1024',
-        n: 1,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
@@ -160,14 +172,15 @@ export async function generateImageBuffer(opts: {
   prompt: string;
   provider: 'gemini' | 'recraft';
   referenceImage?: string;
+  recraftOptions?: { style?: string; substyle?: string; strength?: number };
 }): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
-  const { prompt, provider, referenceImage } = opts;
+  const { prompt, provider, referenceImage, recraftOptions } = opts;
   if (!prompt?.trim()) throw new Error('prompt is required');
   if (provider !== 'gemini' && provider !== 'recraft') throw new Error('provider must be "gemini" or "recraft"');
 
   const buffer = provider === 'gemini'
     ? await generateWithGemini(prompt, referenceImage)
-    : await generateWithRecraft(prompt, referenceImage);
+    : await generateWithRecraft(prompt, referenceImage, recraftOptions);
 
   const { contentType, ext } = sniffImageType(buffer);
   return { buffer, contentType, ext };
