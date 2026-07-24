@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (!product.file_url) return NextResponse.json({ error: 'This product has no file uploaded yet' }, { status: 400 });
 
     const context = [
-      `Write a TPT listing (title, description, tags) for this product, ready to publish. Here is the actual product file: ${product.file_url}`,
+      `Draft a TPT listing (title, description, tags) for this product, for internal review before any publishing decision is made -- this is a draft going into a human review queue, not an instruction to publish anywhere. Here is the actual product file: ${product.file_url}`,
       `Working title: ${product.title}`,
       product.description ? `Current description/notes: ${product.description}` : null,
       product.resource_type ? `Resource type: ${product.resource_type}` : null,
