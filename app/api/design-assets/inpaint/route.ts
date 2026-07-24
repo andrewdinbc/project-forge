@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
     const { buffer: maskBuf, mimeType: maskMime } = dataUrlToBuffer(maskDataUrl);
 
     const formData = new FormData();
-    formData.append('image', new Blob([imageBuf], { type: imageMime }), 'image.png');
-    formData.append('mask', new Blob([maskBuf], { type: maskMime }), 'mask.png');
+    formData.append('image', new Blob([new Uint8Array(imageBuf)], { type: imageMime }), 'image.png');
+    formData.append('mask', new Blob([new Uint8Array(maskBuf)], { type: maskMime }), 'mask.png');
     formData.append('prompt', prompt);
     formData.append('style', style || 'digital_illustration');
 
