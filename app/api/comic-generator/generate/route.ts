@@ -7,6 +7,7 @@ import { createResource, buildSteeringContext } from '@/lib/style-lab';
 import { incrementGenerationCount } from '@/lib/schema-lab';
 import { generateImageBuffer } from '@/lib/design-assets-gen';
 import { ensureRasterImage } from '@/lib/flux-kontext';
+import { diagnosePanelFailure } from '@/lib/visual-integrity-auditor';
 import { buildComicScriptPrompt, buildCastComicScriptPrompt, drawComicCoverPage, drawComicPage, drawLiteracyQuestionsPage, COMIC_PANEL_STYLE_SUFFIX, COMIC_CAST_CATALOG, PAGE_W, PAGE_H } from '@/lib/comic-generator';
 import { sanitizeAiJsonText } from '@/lib/worksheet-pdf';
 import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
@@ -291,6 +292,7 @@ export async function POST(request: NextRequest) {
 
     const embeddedPanels: any[] = [];
     let failedPanels = 0;
+    const panelFailureDetails: { characterId: string; pose: string; reason: string }[] = [];
 
     if (artMode === 'cast') {
       // Zero AI image calls: look up each panel's chosen character+pose in
@@ -338,7 +340,14 @@ export async function POST(request: NextRequest) {
             const res = await fetch(rasterUrl);
             const buf = Buffer.from(await res.arrayBuffer());
             images.push(await pdfDoc.embedPng(buf));
-          } catch { /* skip this character image, panel still renders caption/dialogue */ }
+          } catch (e: any) {
+            // 2026-07-24: Check D of the Visual Integrity Auditor -- a
+            // panel silently losing its art used to just increment a
+            // bare counter nobody investigated. Now it diagnoses WHY,
+            // so "failedPanels: 1" always comes with an actual reason.
+            const reason = await diagnosePanelFailure(url).catch(() => e?.message || String(e));
+            panelFailureDetails.push({ characterId: c.characterId, pose, reason });
+          }
         }
         if (images.length === 0) failedPanels++;
         embeddedPanels.push({ images, caption: p.caption, dialogue: p.dialogue });
@@ -411,6 +420,7 @@ export async function POST(request: NextRequest) {
       savedResourceId: saved.id,
       panelCount: embeddedPanels.length,
       failedPanels,
+      panelFailureDetails: panelFailureDetails.length ? panelFailureDetails : undefined,
       literacyQuestions: script.literacyQuestions,
       digestUsed: mode === 'weekly' ? digestUsed : undefined,
       groundingUsed: {
