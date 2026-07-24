@@ -117,6 +117,40 @@ export default function ProductDetailPage() {
     }
   }
 
+  // Approve & Push to Lumen Veil (Aj, 2026-07-24): "click on each
+  // finished item to view it, and from there approve and push to
+  // Lumen Veil." Runs the real product file through Hyperion's CEO
+  // pipeline -- the same Copywriting agent that can now read a real
+  // attached PDF grounds the listing in what's actually in the file,
+  // and the result lands in Lumen Veil's "Check Hyperion" panel
+  // automatically since it produces both real listing copy and a real
+  // file reference, which is exactly what that panel filters for.
+  const [pushingToLumenVeil, setPushingToLumenVeil] = useState(false);
+  const [lumenVeilError, setLumenVeilError] = useState<string | null>(null);
+  async function handlePushToLumenVeil() {
+    setPushingToLumenVeil(true);
+    setLumenVeilError(null);
+    try {
+      const user = await getCurrentUser();
+      if (!user) { router.push('/auth/login'); return; }
+      const res = await fetch(`/api/products/${productId}/push-to-lumen-veil`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, productId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Push failed');
+      setProduct((prev: any) => ({
+        ...prev,
+        pushed_to_lumen_veil_review_id: data.reviewId,
+        pushed_to_lumen_veil_at: new Date().toISOString(),
+      }));
+    } catch (e) {
+      setLumenVeilError(e instanceof Error ? e.message : 'Failed to push to Lumen Veil');
+    } finally {
+      setPushingToLumenVeil(false);
+    }
+  }
+
   async function handleExtractImages() {
     setExtractingImages(true);
     setError(null);
@@ -200,6 +234,25 @@ export default function ProductDetailPage() {
             >
               {product.pushed_to_steering_doc_id ? '✓ In AI Steering' : pushingToSteering ? 'Pushing…' : '→ Push to AI Steering'}
             </button>
+            <button
+              onClick={handlePushToLumenVeil}
+              disabled={pushingToLumenVeil}
+              className="btn-primary mt-2 ml-2"
+              style={{ opacity: pushingToLumenVeil ? 0.6 : 1 }}
+            >
+              {pushingToLumenVeil
+                ? '🏆 Reading file and writing listing (can take a minute)…'
+                : product.pushed_to_lumen_veil_review_id
+                ? '✓ In Lumen Veil Review — Push Again'
+                : '🏆 Approve & Push to Lumen Veil'}
+            </button>
+            {lumenVeilError && <p className="text-sm text-red-600 mt-2">{lumenVeilError}</p>}
+            {product.pushed_to_lumen_veil_review_id && !lumenVeilError && (
+              <p className="text-sm text-green-700 mt-2">
+                ✓ Sent to Lumen Veil for review{product.pushed_to_lumen_veil_at ? ` (${new Date(product.pushed_to_lumen_veil_at).toLocaleString()})` : ''}.
+                Open the Lumen Veil extension's "Check Hyperion" panel to approve, view, or reject it.
+              </p>
+            )}
             <p className="text-xs text-slate-500 mt-1">
               Only your own products can feed AI Steering -- imported/purchased reference material in
               Style Lab no longer can.
