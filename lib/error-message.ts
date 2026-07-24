@@ -21,3 +21,18 @@ export function errorMessage(e: unknown): string {
   }
   return String(e);
 }
+
+// Same extraction logic as errorMessage, but for call sites that want a
+// custom human-readable fallback (e.g. "Failed to save crop") instead of
+// String(e) when no real message can be extracted. Added 2026-07-24 during
+// the ~20-file instanceof-Error sweep flagged in lib/error-message.ts above
+// -- those call sites use `e instanceof Error ? e.message : 'Some fallback'`,
+// which has the same Postgrest/plain-object blind spot as the original bug,
+// just with a nicer-looking fallback masking it instead of "[object Object]".
+export function errorMessageOr(e: unknown, fallback: string): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e && typeof (e as any).message === 'string') {
+    return (e as any).message;
+  }
+  return fallback;
+}

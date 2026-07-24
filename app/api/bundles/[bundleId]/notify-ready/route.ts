@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendBundleReadyNotification, sendBundleErrorNotification } from "@/lib/brevo-notifications";
+import { errorMessageOr } from '@/lib/error-message';
 
 export async function POST(
   request: NextRequest,
@@ -106,7 +107,7 @@ export async function POST(
   } catch (error) {
     console.error("Notification error:", error);
     const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
+      errorMessageOr(error, "Unknown error occurred");
 
     return NextResponse.json(
       {

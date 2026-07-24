@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { errorMessageOr } from '../lib/error-message';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -43,7 +44,7 @@ export default function DashboardAssistant() {
       if (!res.ok) throw new Error(data.error || 'Failed to get a response');
       setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setError(errorMessageOr(e, 'Something went wrong'));
     } finally {
       setSending(false);
     }

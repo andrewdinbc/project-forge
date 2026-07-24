@@ -3,6 +3,7 @@
 // self-contained (own Anthropic call, no dependency on Hyperion) so a
 // Hyperion outage never takes down chat in a live customer product.
 import { NextResponse } from "next/server";
+import { errorMessage } from '../../../lib/error-message';
 
 export async function POST(request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(request) {
     const data = await res.json();
     return NextResponse.json({ text: data.content?.[0]?.text || "" });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

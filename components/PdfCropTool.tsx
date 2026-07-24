@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { errorMessageOr } from '../lib/error-message';
 
 interface Props {
   userId: string;
@@ -59,7 +60,7 @@ export default function PdfCropTool({ userId, productId, productTitle }: Props) 
       objectUrlRef.current = url;
       setImageUrl(url);
     } catch (e) {
-      setPageError(e instanceof Error ? e.message : 'Failed to render page');
+      setPageError(errorMessageOr(e, 'Failed to render page'));
     } finally {
       setLoadingPage(false);
     }
@@ -139,7 +140,7 @@ export default function PdfCropTool({ userId, productId, productTitle }: Props) 
       setSelStart(null);
       setSelEnd(null);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save crop');
+      setSaveError(errorMessageOr(e, 'Failed to save crop'));
     } finally {
       setSaving(false);
     }

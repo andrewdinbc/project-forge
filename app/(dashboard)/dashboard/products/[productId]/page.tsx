@@ -7,6 +7,7 @@ import { getProduct, updateProduct } from '@/lib/products';
 import { supabase } from '@/lib/supabase';
 import ComponentTagger from '@/components/ComponentTagger';
 import PdfCropTool from '@/components/PdfCropTool';
+import { errorMessageOr } from '@/lib/error-message';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -39,7 +40,7 @@ export default function ProductDetailPage() {
           setProduct(data);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load product');
+        setError(errorMessageOr(e, 'Failed to load product'));
       } finally {
         setLoading(false);
       }
@@ -65,7 +66,7 @@ export default function ProductDetailPage() {
       const updated = await updateProduct(productId, user.id, { file_url: urlData.publicUrl });
       setProduct(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed');
+      setError(errorMessageOr(e, 'Upload failed'));
     } finally {
       setUploading(false);
     }
@@ -87,7 +88,7 @@ export default function ProductDetailPage() {
       setAutoTagResult({ taggedCount: data.taggedCount, pageCount: data.pageCount });
       setTagVersion((v) => v + 1); // force ComponentTagger to reload its list
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Auto-tag failed');
+      setError(errorMessageOr(e, 'Auto-tag failed'));
     } finally {
       setAutoTagging(false);
     }
@@ -111,7 +112,7 @@ export default function ProductDetailPage() {
       if (!res.ok) throw new Error(data.error);
       setProduct((prev: any) => ({ ...prev, pushed_to_steering_doc_id: data.steering_doc_id }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to push to AI Steering');
+      setError(errorMessageOr(e, 'Failed to push to AI Steering'));
     } finally {
       setPushingToSteering(false);
     }
@@ -145,7 +146,7 @@ export default function ProductDetailPage() {
         pushed_to_lumen_veil_at: new Date().toISOString(),
       }));
     } catch (e) {
-      setLumenVeilError(e instanceof Error ? e.message : 'Failed to push to Lumen Veil');
+      setLumenVeilError(errorMessageOr(e, 'Failed to push to Lumen Veil'));
     } finally {
       setPushingToLumenVeil(false);
     }
@@ -166,7 +167,7 @@ export default function ProductDetailPage() {
       if (!res.ok) throw new Error(data.error);
       setExtractResult({ images: data.images || [], skipped: data.skipped || [] });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Image extraction failed');
+      setError(errorMessageOr(e, 'Image extraction failed'));
     } finally {
       setExtractingImages(false);
     }

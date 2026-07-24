@@ -53,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: { product
 
         saved.push({ url: urlData.publicUrl, pageNumber: img.pageNumber, width: img.width, height: img.height });
       } catch (e) {
-        skipped.push({ label: `page ${img.pageNumber}, image ${img.index + 1}`, reason: `upload/save failed: ${e instanceof Error ? e.message : String(e)}` });
+        skipped.push({ label: `page ${img.pageNumber}, image ${img.index + 1}`, reason: `upload/save failed: ${errorMessage(e)}` });
       }
     }
 

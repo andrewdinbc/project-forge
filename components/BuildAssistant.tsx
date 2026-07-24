@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { getCurrentUser } from '@/lib/auth';
+import { errorMessageOr } from '@/lib/error-message';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -62,7 +63,7 @@ export default function BuildAssistant() {
         },
       ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setError(errorMessageOr(e, 'Something went wrong'));
     } finally {
       setSending(false);
     }

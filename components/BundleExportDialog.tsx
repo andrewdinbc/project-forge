@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { errorMessageOr } from '../lib/error-message';
 
 interface BundleExportDialogProps {
   bundleName: string;
@@ -56,7 +57,7 @@ export default function BundleExportDialog({
 
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(errorMessageOr(err, 'An error occurred'));
     } finally {
       setIsExporting(false);
     }

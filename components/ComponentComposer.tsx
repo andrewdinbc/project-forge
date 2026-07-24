@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
+import { errorMessageOr } from '@/lib/error-message';
 
 interface ComponentOption {
   id: string;
@@ -119,7 +120,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       setIncludedGenerated((prev) => ({ ...prev, [tempId]: true }));
       setUrlInput('');
     } catch (e) {
-      setUrlFetchError(e instanceof Error ? e.message : 'Failed to fetch that URL');
+      setUrlFetchError(errorMessageOr(e, 'Failed to fetch that URL'));
     } finally {
       setFetchingUrl(false);
     }
@@ -181,7 +182,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
           errors.push(`${productTitles[id] || id}: ${err.error || res.status}`);
         }
       } catch (e) {
-        errors.push(`${productTitles[id] || id}: ${e instanceof Error ? e.message : 'request failed'}`);
+        errors.push(`${productTitles[id] || id}: ${errorMessageOr(e, 'request failed')}`);
       }
     }
     setAutoTagProgress(null);
@@ -263,7 +264,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
 
       setLastReasoning(data.reasoning || null);
     } catch (e) {
-      setInstructionError(e instanceof Error ? e.message : 'Failed to apply instruction');
+      setInstructionError(errorMessageOr(e, 'Failed to apply instruction'));
     } finally {
       setApplyingInstruction(false);
     }
@@ -320,7 +321,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       previewObjectUrlRef.current = url;
       setPreviewUrl(url);
     } catch (e) {
-      setPreviewError(e instanceof Error ? e.message : 'Failed to build preview');
+      setPreviewError(errorMessageOr(e, 'Failed to build preview'));
     } finally {
       setPreviewLoading(false);
     }
@@ -359,7 +360,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       }
       setSavedToLibrary((prev) => ({ ...prev, [key]: true }));
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to save to library');
+      alert(errorMessageOr(e, 'Failed to save to library'));
     } finally {
       setSavingToLibrary((prev) => ({ ...prev, [key]: false }));
     }
@@ -407,7 +408,7 @@ export default function ComponentComposer({ userId, productIds, productTitles }:
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to generate hybrid product');
+      alert(errorMessageOr(e, 'Failed to generate hybrid product'));
     } finally {
       setGenerating(false);
     }

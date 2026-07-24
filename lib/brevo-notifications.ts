@@ -1,4 +1,5 @@
 interface BundleReadyNotification {
+import { errorMessage } from '../lib/error-message';
   teacherEmail: string;
   teacherName: string;
   bundleId: string;
@@ -58,7 +59,7 @@ export async function sendBundleReadyNotification(
       messageId: data.messageId,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = errorMessage(error);
     console.error("Brevo notification failed:", errorMessage);
     return {
       success: false,
@@ -236,7 +237,7 @@ export async function sendBundleErrorNotification(
       messageId: data.messageId,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = errorMessage(error);
     console.error("Brevo error notification failed:", errorMessage);
     return {
       success: false,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { CATEGORY_GROUPS } from '@/lib/component-categories';
+import { errorMessageOr } from '@/lib/error-message';
 
 interface Component {
   id: string;
@@ -60,7 +61,7 @@ export default function ComponentTagger({ productId }: { productId: string }) {
       setForm({ category: '', label: '', page_start: '', page_end: '', notes: '' });
       await loadComponents();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to add component');
+      alert(errorMessageOr(e, 'Failed to add component'));
     } finally {
       setSaving(false);
     }
