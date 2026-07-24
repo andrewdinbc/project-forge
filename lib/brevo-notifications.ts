@@ -1,5 +1,6 @@
+import { errorMessage } from './error-message';
+
 interface BundleReadyNotification {
-import { errorMessage } from '../lib/error-message';
   teacherEmail: string;
   teacherName: string;
   bundleId: string;
