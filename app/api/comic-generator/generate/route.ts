@@ -6,6 +6,7 @@ import { errorMessage } from '@/lib/error-message';
 import { createResource, buildSteeringContext } from '@/lib/style-lab';
 import { incrementGenerationCount } from '@/lib/schema-lab';
 import { generateImageBuffer } from '@/lib/design-assets-gen';
+import { ensureRasterImage } from '@/lib/flux-kontext';
 import { buildComicScriptPrompt, buildCastComicScriptPrompt, drawComicCoverPage, drawComicPage, drawLiteracyQuestionsPage, COMIC_PANEL_STYLE_SUFFIX, COMIC_CAST_CATALOG, PAGE_W, PAGE_H } from '@/lib/comic-generator';
 import { sanitizeAiJsonText } from '@/lib/worksheet-pdf';
 import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
@@ -324,7 +325,17 @@ export async function POST(request: NextRequest) {
           const url = castMap[`${c.characterId}:${pose}`] || castMap[`${c.characterId}:base`];
           if (!url) continue;
           try {
-            const res = await fetch(url);
+            // 2026-07-24, real bug found live: some cast library images are
+            // stored as .svg (e.g. Owl Professor, Remy -- Recraft vector
+            // output from an earlier pass), but pdf-lib's embedPng/embedJpg
+            // can only embed actual raster pixel data, never SVG. Calling
+            // embedPng on raw SVG bytes threw, was silently caught below,
+            // and the whole panel dropped its character art -- exactly the
+            // "1 failed panel" Aj asked about. ensureRasterImage already
+            // solves this same problem for FLUX Kontext calls; reusing it
+            // here instead of a second copy of the fix.
+            const rasterUrl = await ensureRasterImage(url);
+            const res = await fetch(rasterUrl);
             const buf = Buffer.from(await res.arrayBuffer());
             images.push(await pdfDoc.embedPng(buf));
           } catch { /* skip this character image, panel still renders caption/dialogue */ }
