@@ -28,12 +28,24 @@ const admin: any = supabaseAdmin;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, prompt, provider, referenceImage, style } = body as {
+    const { userId, prompt, provider, referenceImage, style, skipStyleSuffix, recraftOptions } = body as {
       userId: string;
       prompt: string;
       provider: 'gemini' | 'recraft';
       referenceImage?: string; // data URL (data:image/png;base64,...)
-      style?: 'line_art' | 'flat_color_icon';
+      style?: 'line_art' | 'flat_color_icon' | 'scene_color' | 'scene_bw';
+      // 2026-07-24: the coloring-page suffixes (line_art/flat_color_icon)
+      // explicitly demand "no color fill", "no shading", "plain white
+      // background" -- correct for that use case, actively wrong for
+      // anything reference-conditioned toward a different existing style
+      // (e.g. a painterly/watercolor illustration). skipStyleSuffix lets a
+      // caller send an already-complete prompt with no suffix appended.
+      // recraftOptions lets a caller pick a real Recraft style/substyle
+      // (e.g. "digital_illustration") instead of the old hardcoded
+      // vector_illustration/line_art, which flattened every reference into
+      // flat vector clip art regardless of what the reference looked like.
+      skipStyleSuffix?: boolean;
+      recraftOptions?: { style?: string; substyle?: string; strength?: number };
     };
 
     if (!userId || !prompt?.trim() || !provider) {
@@ -42,10 +54,10 @@ export async function POST(request: NextRequest) {
     if (provider !== 'gemini' && provider !== 'recraft') {
       return NextResponse.json({ error: 'provider must be "gemini" or "recraft"' }, { status: 400 });
     }
-    const styleSuffix = STYLE_SUFFIXES[style || 'line_art'] || LINE_ART_STYLE_SUFFIX;
+    const styleSuffix = skipStyleSuffix ? '' : (STYLE_SUFFIXES[style || 'line_art'] || LINE_ART_STYLE_SUFFIX);
     const fullPrompt = `${prompt}${styleSuffix}`;
 
-    const { buffer, contentType, ext } = await generateImageBuffer({ prompt: fullPrompt, provider, referenceImage });
+    const { buffer, contentType, ext } = await generateImageBuffer({ prompt: fullPrompt, provider, referenceImage, recraftOptions });
 
     const path = `${userId}/${Date.now()}-${provider}.${ext}`;
     const { error: uploadError } = await admin.storage.from('design-assets').upload(path, buffer, {
