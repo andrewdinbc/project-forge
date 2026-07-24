@@ -21,6 +21,13 @@ const NON_SHAPE_KEYWORDS = [
   'table of contents', 'answer key', 'teacher notes', 'assembly direction',
   'terms of use', 'credits', 'promotional', 'resource link', 'directions page',
   'absent student', 'catch-up',
+  // Added 2026-07-24 (schema-shape-matcher false-positive sweep): a
+  // "Materials List" component's purpose text lists the physical items a
+  // *different* foldable needs (paperclip, spinner template, etc.), so its
+  // own keyword-overlap score against those shapes was spuriously high --
+  // it was matching "spinner" as if the list itself were the foldable.
+  // Materials/supply lists are always plain text, never a cut/fold shape.
+  'materials list', 'materials needed', 'supply list', 'supplies needed',
 ];
 
 export interface ShapeMatch {
@@ -30,18 +37,38 @@ export interface ShapeMatch {
   count: number; // suggested labels.length for this shape, clamped to its min/max
 }
 
-export function matchComponentToShape(componentName: string, componentPurpose: string = ''): ShapeMatch | null {
-  const text = `${componentName} ${componentPurpose}`.toLowerCase();
+// Minimum score to accept a match at all. Added 2026-07-24: a single
+// generic-word hit buried in a long purpose paragraph (e.g. "stack" in a
+// sentence about stacking finished cards in a pile, nothing to do with the
+// Layered Book shape) was enough to win when it was the *only* shape that
+// scored anything. Requiring 2+ weighted points means one incidental
+// purpose-text word can no longer single-handedly assign a shape; either
+// the name itself is a strong signal (worth 3) or multiple keywords need
+// to agree.
+const MIN_MATCH_SCORE = 2;
+const NAME_MATCH_WEIGHT = 3;
+const PURPOSE_MATCH_WEIGHT = 1;
 
-  if (NON_SHAPE_KEYWORDS.some((kw) => text.includes(kw))) return null;
+export function matchComponentToShape(componentName: string, componentPurpose: string = ''): ShapeMatch | null {
+  const nameText = componentName.toLowerCase();
+  const purposeText = componentPurpose.toLowerCase();
+  const fullText = `${nameText} ${purposeText}`;
+
+  if (NON_SHAPE_KEYWORDS.some((kw) => fullText.includes(kw))) return null;
 
   let best: { shape: (typeof FOLDABLE_SHAPES)[number]; score: number } | null = null;
   for (const shape of FOLDABLE_SHAPES as any[]) {
     const keywords: string[] = shape.matchKeywords || [];
-    const score = keywords.reduce((acc, kw) => acc + (text.includes(kw.toLowerCase()) ? 1 : 0), 0);
+    const score = keywords.reduce((acc, kw) => {
+      const k = kw.toLowerCase();
+      let s = acc;
+      if (nameText.includes(k)) s += NAME_MATCH_WEIGHT;
+      else if (purposeText.includes(k)) s += PURPOSE_MATCH_WEIGHT;
+      return s;
+    }, 0);
     if (score > 0 && (!best || score > best.score)) best = { shape, score };
   }
-  if (!best) return null;
+  if (!best || best.score < MIN_MATCH_SCORE) return null;
 
   return {
     shapeKey: best.shape.key,

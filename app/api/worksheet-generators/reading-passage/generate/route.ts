@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import {
   newWorksheetDoc, drawThemeBorder, drawThemeHeader, wrapLines, uploadWorksheetPdf,
   PAGE_W, PAGE_H, INK, NAVY, GRAY, LINE, asciiSafeFilename, sanitizeAiJsonText} from '@/lib/worksheet-pdf';
-import { fleschKincaidGrade } from '@/lib/readability';
+import { fleschKincaidGrade, gradeToLexile } from '@/lib/readability';
 import { errorMessage } from '@/lib/error-message';
 import { CURRICULUM_ELABORATIONS, ELABORATIONS_SUBJECT_MAP } from '@/lib/curriculum-full-elaborations';
 import { buildSteeringContext } from '@/lib/style-lab';
@@ -149,10 +149,13 @@ async function generateLevel(topic: string, targetGrade: number, levelLabel: str
   parsed = sanitizeAiJsonText(parsed);
 
   const scored = fleschKincaidGrade(parsed.passage);
+  const actualLexile = gradeToLexile(scored.grade);
   return {
     levelLabel: levelLabel || 'Passage',
     targetGrade,
     actualGrade: scored.grade,
+    actualLexile,
+    targetLexile: gradeToLexile(targetGrade),
     gradeGapFlag: Math.abs(scored.grade - targetGrade) > 2.5, // sanity-check flag, not a hard failure
     exemplarsUsed: exemplars.map((e: any) => e.passage_num),
     ...parsed,
@@ -214,11 +217,14 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(precomposedLevels) && precomposedLevels.length) {
       levels = precomposedLevels.map((lvl: any) => {
         const scored = fleschKincaidGrade(lvl.passage);
+        const targetGrade = Number(lvl.targetGrade);
         return {
           levelLabel: lvl.levelLabel || 'Passage',
-          targetGrade: Number(lvl.targetGrade),
+          targetGrade,
           actualGrade: scored.grade,
-          gradeGapFlag: Math.abs(scored.grade - Number(lvl.targetGrade)) > 2.5,
+          actualLexile: gradeToLexile(scored.grade),
+          targetLexile: gradeToLexile(targetGrade),
+          gradeGapFlag: Math.abs(scored.grade - targetGrade) > 2.5,
           exemplarsUsed: [],
           title: lvl.title, passage: lvl.passage,
           annotationGuide: lvl.annotationGuide || [], questions: lvl.questions || [],

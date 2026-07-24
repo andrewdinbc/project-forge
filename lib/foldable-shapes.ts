@@ -47,7 +47,7 @@ export const FOLDABLE_SHAPES = [
     minCount: 2,
     maxCount: 6,
     defaultCount: 3,
-    matchKeywords: ['layer', 'layered', 'stack', 'accordion', 'booklet'],
+    matchKeywords: ['layer', 'layered', 'layered book', 'stacked layer', 'stacked tab'],
   },
   {
     key: 'radial-foldable',
@@ -77,7 +77,7 @@ export const FOLDABLE_SHAPES = [
     minCount: 2,
     maxCount: 2,
     defaultCount: 2,
-    matchKeywords: ['puzzle', 'jigsaw', 'interlock', 'puzzle piece', 'interlocking piece', 'fit together', 'prior knowledge'],
+    matchKeywords: ['puzzle', 'jigsaw', 'interlock', 'puzzle piece', 'interlocking piece', 'fit together like a puzzle', 'prior knowledge and inference'],
   },
   {
     key: 'silhouette-card',
@@ -88,7 +88,7 @@ export const FOLDABLE_SHAPES = [
     maxCount: 1,
     defaultCount: 1,
     outlineOptions: ['circle', 'banner', 'badge', 'cloud'],
-    matchKeywords: ['label', 'callout', 'vocabulary card', 'vocabulary term', 'badge', 'banner', 'cloud', 'cut-and-paste label', 'card'],
+    matchKeywords: ['label', 'callout', 'vocabulary card', 'vocabulary term', 'badge', 'banner', 'cloud', 'cut-and-paste label', 'shaped card', 'decorative outline'],
   },
   {
     key: 'storage-pocket',
