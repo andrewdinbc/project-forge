@@ -1,0 +1,192 @@
+VISUAL INTEGRITY AUDITOR — DESIGN
+For: Hyperion / Chalk & Circuit ecosystem
+Written: 2026-07-24, after tonight's comic-generator debugging session
+Author: Claude, for Aj's review
+
+===============================================================
+WHY THIS EXISTS
+===============================================================
+
+Tonight, in one sample comic, we found FOUR separate real bugs, each
+invisible until Aj personally looked at the output and asked "why":
+
+  1. Maya's production character image is secretly still in color,
+     sitting inside a category that's supposed to be pure black-and-white.
+  2. None of tonight's new character work was actually reachable by the
+     generator — it was saved under categories the code never queries.
+  3. Owl Professor's image is an SVG. The PDF library can only embed
+     raster pixels. Every time the script picked him, his panel silently
+     lost its artwork — no error, no missing content flagged, no way to
+     know without downloading images and doing byte-level diffs by hand.
+  4. Separately, from the earlier redo work: images conditioned off
+     Claude's own prior output (instead of Aj's original upload) visibly
+     degrade, and there was no mechanism catching that either.
+
+None of these were flagged by the systems that produced them. Every one
+of them was only caught because Aj looked at the actual output and
+pushed back. That's the gap this agent closes: a systemic, standing
+check that runs BEFORE a human has to notice something looks wrong.
+
+===============================================================
+WHAT IT CHECKS (each one is a real bug from tonight, not hypothetical)
+===============================================================
+
+CHECK A — Colorspace mismatch
+  For every image in a category whose name or metadata claims
+  "black and white" / "printable" / "line art" (e.g. comic-character,
+  comic-character-bw): download it, compute mean deviation between R/G/B
+  channels. True B&W art has near-zero deviation. Flag anything above a
+  threshold (~3, calibrated from tonight's real numbers: Maya's
+  contaminated image measured 6.36, clean B&W images measured 0.4-0.8).
+  This is the exact diagnostic I ran by hand tonight — just automated.
+
+CHECK B — Embeddability / format mismatch
+  For every image referenced by a category that a generator embeds
+  directly into a PDF (pdf-lib can only embed PNG/JPG, never SVG):
+  check the actual file signature, not the URL extension. Flag — and can
+  safely auto-fix — anything that's actually SVG by rasterizing it
+  through the existing ensureRasterImage helper (lib/flux-kontext.ts)
+  and updating the row in place. This is tonight's Owl Professor/Remy
+  bug, caught proactively instead of by a silently-dropped panel.
+
+CHECK C — Reachability ("is this actually wired in?")
+  Each real generator has a specific category + source_id pattern it
+  queries (comic-generator wants category='comic-character', source_id
+  'comic-cast:<id>:<pose>'). The auditor keeps a small manifest of these
+  patterns per generator. For any newly-generated character/asset set,
+  diff what SHOULD be wired in against what the generator can actually
+  see. Flag orphaned work — content that exists, looks finished, and
+  will never be picked because it's sitting under a similar-but-wrong
+  category. This is tonight's "why are none of our new items included."
+
+CHECK D — Silent partial-failure follow-up
+  Generators that report a count like failedPanels: 1 currently just
+  report the number — nobody automatically asks why. The auditor hooks
+  into that response: on any failedX > 0, it re-fetches the specific
+  item(s) involved, classifies the failure (format error / timeout /
+  missing asset / other), and turns a bare number into an actual
+  diagnosis, surfaced immediately rather than requiring Aj to ask.
+
+CHECK E — Generation lineage / hop tracking
+  Going forward, every generated image should record in its metadata
+  whether it was conditioned off Aj's original upload (hop 0) or off a
+  prior AI-generated image (hop 1+). The auditor flags anything hop 1+
+  as "needs review before production use." This should ALSO run as a
+  pre-check at generation time, not just after — refuse (or warn loudly
+  on) any new generation call that would condition off a non-original
+  reference, which is exactly what caused tonight's "renders are
+  getting worse" complaint.
+
+CHECK F — Duplicate-in-deliverable
+  After a PDF (or other multi-image deliverable) is produced, hash every
+  embedded image. If the same exact file appears more than once across
+  different logical slots (two different panels, two different
+  worksheet questions), flag it — that's almost always a symptom of a
+  missing pose/asset causing a silent fallback reuse, which is what
+  happened with Maya's duplicated panel tonight.
+
+===============================================================
+WHERE FINDINGS GO
+===============================================================
+
+Per the standing rule that production-blocking failures must be
+auto-detected and auto-fixed, not just logged:
+
+  - Check B (format mismatch): auto-fix immediately, log what was fixed.
+  - Checks A, C, E (color contamination, orphaned assets, bad lineage):
+    flag only — these need a human or creative judgment call, not a
+    silent rewrite. Surface clearly: what's wrong, which asset, which
+    product/generator it affects, and what fixing it would require.
+  - Check D (partial failures): surface the diagnosis inline with the
+    generation result itself, so "ok:true, failedPanels:1" never ships
+    without an explanation attached.
+  - Check F (duplicates): flag, attach to the specific deliverable.
+
+All flags land in Hyperion's institutional memory (same as tonight's
+manual /api/context/learn entries) AND, once the CEO review-queue
+limitation from tonight is addressed, in Aj's normal review flow —
+this design assumes that gap gets closed separately (see Open
+Questions).
+
+===============================================================
+WHEN IT RUNS
+===============================================================
+
+  1. Post-generation hook — appended automatically to the end of any
+     generator that embeds images into a deliverable: comic-generator
+     first, then worksheet-pdf, TeacherAssist report generation, and any
+     future product PDF pipeline. Runs on that one output, fast,
+     synchronous, before the "ok: true" response goes back.
+
+  2. Scheduled sweep — a periodic full pass over every "production"
+     category in library_parts across every product, catching problems
+     in existing content, not just new generations. Same cron pattern
+     as the existing Backlog Staleness Auditor and health-monitor.
+
+  3. On-demand — callable directly (by me or by Aj) against any specific
+     resource, category, or character, for exactly the kind of
+     "why does this look wrong" investigation from tonight.
+
+===============================================================
+WHERE IT LIVES
+===============================================================
+
+  lib/visual-integrity-auditor.js  (project-forge repo — this is where
+    library_parts, the generators, and the image pipeline all already
+    live; Hyperion triggers it via cron the same way it triggers other
+    audits, rather than owning the logic itself)
+
+  app/api/audits/visual-integrity/route.ts  (POST for on-demand/hook
+    calls, with a mode param: 'resource' | 'category' | 'sweep')
+
+  A small JSON manifest of {generator, category, source_id pattern,
+  expected roster} per production pipeline, so Check C has something
+  concrete to diff against — starting with comic-generator's
+  COMIC_CAST_CATALOG, extendable as more generators get wired in.
+
+===============================================================
+ROLLOUT PLAN
+===============================================================
+
+  Phase 1 (small, safe, high value): Checks A, B, D on comic-generator
+  only. This alone would have caught all three bugs from tonight's
+  sample. Format-fix (B) auto-applies; A and D just surface clearly.
+
+  Phase 2: Check C (reachability manifest), starting with comic-
+  generator's catalog, so "is this actually wired in" becomes answerable
+  before Aj asks it.
+
+  Phase 3: Check E (lineage tracking), which requires tagging new
+  generations going forward — can't retroactively know the hop-count of
+  images already made, but everything from here on can carry it.
+
+  Phase 4: Extend the whole thing to worksheet-pdf, TeacherAssist report
+  generation, and any other generator that embeds images into a
+  deliverable teachers actually see or print.
+
+===============================================================
+OPEN QUESTIONS FOR AJ
+===============================================================
+
+  1. Auto-fix scope: comfortable with Check B (SVG rasterization)
+     auto-applying without asking first? It's a pure technical
+     conversion with no creative judgment involved, same class of fix
+     as tonight's actual code change.
+
+  2. Where should flags surface, concretely, given the CEO review-queue
+     gap found tonight? Options: a new lightweight "flag for review"
+     table/endpoint (smallest new surface area), or folding into the
+     existing health-monitor's alert path, or both.
+
+  3. Priority: comic-generator first (as scoped above), or should
+     worksheet-pdf/TeacherAssist reports jump the queue given they're
+     TPT-sold, Priority 1 products?
+
+===============================================================
+NEXT STEP
+===============================================================
+
+This is a design, not yet code. Say go and I'll build Phase 1 — Checks
+A, B, D wired into comic-generator specifically, since that's a scoped,
+well-understood, low-risk starting point with real bugs already proven
+against it tonight.
